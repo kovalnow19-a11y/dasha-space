@@ -357,6 +357,36 @@ select:disabled{opacity:.6}
   .stop-time{width:44px;font-size:14px}
 }
 
+/* ---------- документы поездки ---------- */
+a.btn{text-decoration:none;display:inline-block}
+.docs{display:grid;gap:12px}
+.docs .lbl{margin:10px 0 0}
+.doc{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:14px;align-items:center;background:#fff;border-radius:22px;padding:12px 14px;box-shadow:var(--shadow)}
+.doc-th{width:56px;height:56px;border-radius:16px;background:linear-gradient(160deg,var(--lime),var(--lilac));display:grid;place-items:center;font-size:22px;font-weight:800;color:#fff;overflow:hidden;cursor:pointer}
+.doc-th.pdf{font-size:14px;letter-spacing:.04em}
+.doc-th.link{background:#f3e3f6}
+.doc-th img{width:100%;height:100%;object-fit:cover;display:block}
+.doc-b{min-width:0;cursor:pointer}
+.doc-b b{display:block;word-break:break-word;line-height:1.3}
+.doc-n{margin:4px 0 0;font-size:13.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.doc-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.doc-img{display:block;max-width:100%;max-height:70vh;margin:0 auto;border-radius:16px}
+.doc-frame{display:block;width:100%;height:70vh;border:0;border-radius:16px;background:#f4f6f1}
+.doc-pdf-m{text-align:center;padding:26px 18px;background:#f7f9f4;border-radius:20px}
+.doc-pdf-m b{display:block;font-size:42px;margin-bottom:6px}
+.doc-pdf-m p{margin:0 0 14px;color:var(--muted);font-size:14px}
+.ups{display:grid;gap:10px}
+.up{background:#f7f9f4;border-radius:16px;padding:10px 14px}
+.up .bar{margin:8px 0 4px;height:8px}
+.up-n{word-break:break-all;font-size:14px}
+.up-s.err{color:#a33b2a;font-weight:700}
+@media(max-width:760px){
+  .doc{grid-template-columns:48px minmax(0,1fr);gap:12px;padding:12px}
+  .doc-th{width:48px;height:48px;border-radius:14px}
+  .doc-act{grid-column:1/-1;justify-content:flex-start}
+  .doc-frame{height:62vh}
+}
+
 /* ---------- облако: вход и статус синхронизации ---------- */
 .sync{border:0;background:#fff;border-radius:999px;padding:7px 12px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;box-shadow:var(--shadow);display:flex;gap:6px;align-items:center}
 .sync[hidden]{display:none}
@@ -400,6 +430,7 @@ select:disabled{opacity:.6}
 <div id="toast" class="toast"></div>
 <input type="file" id="importFile" accept=".json,application/json" hidden>
 <input type="file" id="mediaFile" accept="image/*" hidden>
+<input type="file" id="docFile" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple hidden>
 <div id="lightbox" class="lb" data-a="lbBg" hidden></div>
 
 <script src="vendor/supabase-js-2.118.0.js"></script>
@@ -419,9 +450,10 @@ const SB_KEY = 'sb_publishable_uSC5VrRjZdgkQl30syr0BQ_Pix3uSi1';
 const SB_TABLE = 'cabinet_items';
 const SB_TRAVEL = 'travel_items'; // поездки — в отдельной таблице, чтобы старые открытые вкладки их не видели и не трогали
 const SB_BUCKET = 'media';
+const SB_DOCS = 'travel-documents'; // приватная папка для документов поездок
 const CL = {sb:null, uid:null, email:'', base:{}, since:null, urls:{}, pmedia:{}, ready:false,
   busy:false, again:false, pulling:false, hold:0, status:'', needRender:false, pushT:null, warned:false,
-  miss:{}, pushSeq:0, seedHeld:false, leaving:false, sinceT:null, travelOff:false};
+  durls:{}, dmiss:{}, miss:{}, pushSeq:0, seedHeld:false, leaving:false, sinceT:null, travelOff:false};
 
 /* ---------- справочники ---------- */
 const STATUSES = ['идея','разработка','сценарий','съёмка','монтаж','опубликовано'];
@@ -476,7 +508,7 @@ function emptyState(){
     ideas:[], refs:[], journal:[], weekly:{},
     courses:[], books:[], goals:[],
     posts:[], blogSeeded:0, postsMigrated:0,
-    trips:[], stops:[]
+    trips:[], stops:[], docs:[]
   };
 }
 
@@ -562,7 +594,7 @@ const UI = {
   jtab:'write', jf:'all', jq:'', jweek:weekStart(T()), jprompt:rand(PROMPTS.free),
   hsel:null, hmonth:T().slice(0,7),
   rplat:'all', rper:'all', rsort:'date', cmp:[], post:null,
-  trip:null, tf:'all'
+  trip:null, tf:'all', ttab:'route', dcat:'all'
 };
 
 /* ---------- хелперы предметной области ---------- */
@@ -1500,7 +1532,7 @@ function openSettings(){
   openModal(`<h3>Данные и настройки</h3>
     <div class="f"><span>Как тебя называть</span><input data-c="setName" value="${esc(S.name)}"></div>
     <p class="muted sm">Записи и изображения хранятся в твоём личном облаке и синхронизируются между телефоном и компьютером. Вход: <b>${esc(CL.email)}</b>. ${syncText()}.</p>
-    <p class="muted sm">Время от времени делай экспорт — это твоя резервная копия, в неё входят и изображения. Файл экспорта можно загрузить обратно через «Импорт».</p>
+    <p class="muted sm">Время от времени делай экспорт — это твоя резервная копия, в неё входят и изображения. Файл экспорта можно загрузить обратно через «Импорт». Файлы документов поездок хранятся в облаке и в файл копии не входят — только их названия и заметки.</p>
     <p class="muted sm"><b>${storageLine()}</b>.</p>
     <div class="stack">
       <button class="btn" data-a="export">⬇️ Экспорт всех данных в файл</button>
@@ -1674,7 +1706,7 @@ const ACT = {
   /* путешествия */
   tripFilter: d => { UI.tf = d.v; render(); },
   tripNew: () => openTrip(),
-  tripOpen: d => { UI.trip = d.id; render(); window.scrollTo(0,0); },
+  tripOpen: d => { UI.trip = d.id; UI.ttab = 'route'; UI.dcat = 'all'; render(); window.scrollTo(0,0); },
   tripBack: () => { UI.trip = null; render(); window.scrollTo(0,0); },
   tripEdit: d => openTrip(d.id),
   stopNew: d => openStop(null, d.trip, d.day),
@@ -1682,6 +1714,15 @@ const ACT = {
   stopMove: d => moveStop(d.id, +d.v),
   stopDel: d => { const x = byId(S.stops, d.id); if(!x || !confirm(`Удалить остановку «${x.name || 'без названия'}»?`)) return; del(S.stops, x.id); save(); toast('Остановка удалена'); },
   ext: () => {},
+  tripTab: d => { UI.ttab = d.v; render(); },
+  docCat: d => { UI.dcat = d.v; render(); },
+  docFiles: d => pickDocFiles(d.trip),
+  docLink: d => openDocForm(null, d.trip),
+  docEdit: d => openDocForm(d.id),
+  docView: d => openDocViewer(d.id),
+  docDel: d => deleteDoc(d.id),
+  docWait: () => { toast('Готовлю ссылку на файл…'); resolveDocUrls(true); },
+  docUpload: () => runDocUpload(),
 
   /* данные */
   export: async (d, el) => {
@@ -1698,7 +1739,7 @@ const ACT = {
   wipe: async () => { if(!confirm('Удалить ВСЕ данные из облака? Это нельзя отменить. Сначала лучше сделать экспорт.')) return;
     const n = S.name; S = emptyState(); S.name = n; S.habitsSeeded = 1; S.blogSeeded = 1; S.postsMigrated = 1; MEDIA = {}; CL.pmedia = {}; CL.urls = {}; savePendingMedia(); saveUrls(); UI.cmp = [];
     closeModal(); save(); toast('Кабинет очищен');
-    await removeAllCloudMedia(); },
+    await removeAllCloudMedia(); await removeAllCloudMedia(SB_DOCS); },
   syncNow: () => { if(CL.status==='err' || CL.status==='off') toast('Пробую связаться с облаком…'); cloudSync(); },
   migrate: () => { const L = legacyInfo(); if(L) openMigrate(L, true); else toast('В этом браузере нет старых записей'); },
   migGo: async (d, el) => { el.disabled = true; await runMigration(MIG.L, MIG.mode); },
@@ -1841,7 +1882,8 @@ function tripView(t){
     + hero(tripBadge(t.status), esc(t.title || 'Без названия'), (place ? '📍 '+place+'<br>' : '')+'🗓 '+tripDates(t), [
       [days.length || '—', plural(days.length,'день','дня','дней')], [stops.length, plural(stops.length,'остановка','остановки','остановок')]
     ]) + travelNote() + `
-    <div class="days">${groups.map(g => dayCard(t, g, g.day && g.day===today)).join('')}</div>`;
+    <div class="tabs">${tabs([['route','🗺 Маршрут'], ['docs',`📎 Документы${tripDocs(t).length ? ' ('+tripDocs(t).length+')' : ''}`]], UI.ttab, 'tripTab')}</div>
+    ${UI.ttab==='docs' ? docsTab(t) : `<div class="days">${groups.map(g => dayCard(t, g, g.day && g.day===today)).join('')}</div>`}`;
 }
 function dayCard(t, g, isToday){
   const list = stopGroup(t, g.day);
@@ -1877,7 +1919,7 @@ function openTrip(id){
   ],
   validate: v => v.start && v.end && v.end<v.start ? 'Окончание не может быть раньше начала' : '',
   onSave: v => { Object.assign(t, v); if(isNew){ S.trips.push(t); UI.trip = t.id; window.scrollTo(0,0); } },
-  onDelete: isNew ? null : () => { del(S.trips, t.id); S.stops = S.stops.filter(x => x.tripId!==t.id); UI.trip = null; }});
+  onDelete: isNew ? null : () => { removeDocFiles(tripDocs(t)); del(S.trips, t.id); S.stops = S.stops.filter(x => x.tripId!==t.id); S.docs = S.docs.filter(x => x.tripId!==t.id); UI.trip = null; }});
 }
 function openStop(id, tripId, day){
   const s = id ? byId(S.stops, id) : {id:uid(), tripId, day:day||'', name:'', time:'', desc:'', url:''};
@@ -1911,16 +1953,226 @@ function moveStop(id, dir){
   save();
 }
 
+/* ---------- документы поездки ---------- */
+const DOC_CATS = [['flights','✈️','Авиабилеты'],['stay','🏨','Жильё'],['transport','🚆','Транспорт'],['visa','🛂','Визы'],['insurance','🛡','Страховка'],['tours','🎟','Экскурсии'],['other','📎','Другое']];
+const DOC_TYPES = {'application/pdf':'pdf', 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp'};
+const DOC_EXT = {pdf:'application/pdf', jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', webp:'image/webp'};
+const DOC_MAX = 20*1024*1024; // столько же разрешено в настройке bucket travel-documents
+const docCatOf = k => DOC_CATS.find(c => c[0]===k) || DOC_CATS[DOC_CATS.length-1];
+const tripDocs = t => S.docs.filter(x => x.tripId===t.id);
+const isImgDoc = x => x.type==='file' && /^image\//.test(x.mime||'');
+const fmtSize = b => b>=1048576 ? r1(b/1048576).toString().replace('.',',')+' МБ' : Math.max(1, Math.round((+b||0)/1024))+' КБ';
+const docMime = f => DOC_TYPES[f.type] ? f.type : (DOC_EXT[(String(f.name).split('.').pop()||'').toLowerCase()] || '');
+const linkHost = u => { try { return new URL(u).hostname.replace(/^www\./,''); } catch(err) { return 'ссылка'; } };
+function docFileName(x){
+  const ext = DOC_TYPES[x.mime] || 'bin';
+  let n = String(x.title || 'document').replace(/[\\/:*?"<>|\u0000-\u001f]+/g,' ').trim().slice(0,90) || 'document';
+  return n.toLowerCase().endsWith('.'+ext) ? n : n+'.'+ext;
+}
+function docMeta(x){
+  const c = docCatOf(x.cat);
+  return [c[1]+' '+c[2], x.date ? fmtD(x.date,{day:'numeric', month:'long', year:'numeric'}) : '',
+    x.type==='link' ? '🔗 '+linkHost(x.url) : (DOC_TYPES[x.mime]||'файл').toUpperCase()+' · '+fmtSize(x.size)].filter(Boolean).join(' · ');
+}
+function docsTab(t){
+  const all = tripDocs(t), ord = k => DOC_CATS.findIndex(c => c[0]===k);
+  const used = DOC_CATS.filter(c => all.some(x => docCatOf(x.cat)[0]===c[0]));
+  if(UI.dcat!=='all' && !used.some(c => c[0]===UI.dcat)) UI.dcat = 'all';
+  const list = all.filter(x => UI.dcat==='all' || docCatOf(x.cat)[0]===UI.dcat)
+    .sort((a,b) => ord(docCatOf(a.cat)[0])-ord(docCatOf(b.cat)[0]) || (a.date||'9999').localeCompare(b.date||'9999') || (a.created||0)-(b.created||0));
+  const total = S.docs.reduce((a,x) => a+(+x.size||0), 0);
+  let html = '', last = '';
+  list.forEach(x => { const c = docCatOf(x.cat); if(c[0]!==last){ last = c[0]; html += `<div class="lbl">${c[1]} ${c[2]}</div>`; } html += docRow(x); });
+  setTimeout(() => resolveDocUrls(), 0);
+  return `<div class="tbar">
+      ${used.length>1 ? `<div class="chips">${[['all','Все']].concat(used.map(c => [c[0], c[1]+' '+c[2]])).map(([v,l]) => `<button class="chip ${UI.dcat===v?'on':''}" data-a="docCat" data-v="${v}">${l}</button>`).join('')}</div>` : ''}
+      <div class="sp"></div>
+      <button class="btn ghost" data-a="docLink" data-trip="${t.id}">🔗 Ссылка на бронь</button>
+      <button class="btn" data-a="docFiles" data-trip="${t.id}">+ Загрузить файлы</button></div>
+    ${list.length ? `<div class="docs">${html}</div>`
+      : `<div class="card"><p class="empty">Пока нет документов</p><p class="muted sm" style="margin:6px 0 0">Билеты, брони жилья, визы, страховки — PDF, JPG, PNG или WEBP до 20 МБ. Или просто ссылка на бронирование.</p></div>`}
+    <p class="muted sm" style="margin-top:14px">🔒 Документы видны только тебе после входа — на телефоне и на компьютере. Сейчас все документы занимают ${fmtSize(total)}; на бесплатном тарифе Supabase — 1 ГБ на все файлы.</p>`;
+}
+function docRow(x){
+  const u = CL.durls[x.id], ok = u && u.exp>Date.now();
+  const th = x.type==='link' ? '<div class="doc-th link">🔗</div>'
+    : isImgDoc(x) && ok ? `<div class="doc-th" data-a="docView" data-id="${x.id}"><img src="${esc(u.view)}" alt="" loading="lazy"></div>`
+    : `<div class="doc-th ${x.mime==='application/pdf'?'pdf':''}" data-a="docView" data-id="${x.id}">${x.mime==='application/pdf' ? 'PDF' : docCatOf(x.cat)[1]}</div>`;
+  const acts = x.type==='link'
+    ? (safeUrl(x.url) ? `<a class="btn sm" href="${esc(x.url.trim())}" target="_blank" rel="noopener" data-a="ext">Открыть ↗</a>` : '')
+    : (ok ? `<button class="btn sm" data-a="docView" data-id="${x.id}">Просмотр</button><a class="btn sm ghost" href="${esc(u.dl)}" data-a="ext">⬇ Скачать</a>`
+          : `<button class="btn sm" data-a="docWait">Просмотр</button>`);
+  return `<div class="doc">${x.type==='link' && safeUrl(x.url) ? `<a href="${esc(x.url.trim())}" target="_blank" rel="noopener" data-a="ext" style="display:contents">${th}</a>` : th}
+    <div class="doc-b" data-a="docEdit" data-id="${x.id}"><b>${esc(x.title || 'Без названия')}</b><div class="mini">${esc(docMeta(x))}</div>${(x.note||'').trim() ? `<p class="doc-n">${esc(x.note)}</p>` : ''}</div>
+    <div class="doc-act">${acts}<button class="ic" data-a="docEdit" data-id="${x.id}" title="Переименовать или изменить">✎</button><button class="ic" data-a="docDel" data-id="${x.id}" title="Удалить">×</button></div>
+  </div>`;
+}
+/* временные ссылки на файлы (на 1 час) — только для открытой поездки */
+async function resolveDocUrls(force){
+  const t = UI.trip && byId(S.trips, UI.trip);
+  if(!t || !CL.sb || !CL.uid || CL.dbusy) return;
+  const now = Date.now();
+  const need = tripDocs(t).filter(x => x.type==='file' && x.path && !(CL.durls[x.id] && CL.durls[x.id].exp>now+600e3) && (force || !(CL.dmiss[x.id]>now)));
+  if(!need.length) return;
+  CL.dbusy = true; let ch = false;
+  try {
+    const {data, error} = await CL.sb.storage.from(SB_DOCS).createSignedUrls(need.map(x => x.path), 3600);
+    if(error) throw error;
+    (data||[]).forEach((r,i) => { const x = need.find(d => d.path===r.path) || need[i]; if(!x) return;
+      if(r.signedUrl && !r.error){ CL.durls[x.id] = {view:r.signedUrl, dl:r.signedUrl+(r.signedUrl.includes('?') ? '&' : '?')+'download='+encodeURIComponent(docFileName(x)), exp:now+3600e3}; ch = true; }
+      else CL.dmiss[x.id] = now+60e3; });
+    if(force && need.some(x => !CL.durls[x.id])) toast('Файл не найден в облаке — возможно, он ещё загружается с другого устройства');
+  } catch(err) { need.forEach(x => { CL.dmiss[x.id] = now+30e3; }); if(force) toast(docErrText(err)); }
+  finally { CL.dbusy = false; }
+  if(ch) requestRender();
+}
+function openDocViewer(id){
+  const x = byId(S.docs, id); if(!x) return;
+  if(x.type==='link'){ if(safeUrl(x.url)) window.open(x.url.trim(), '_blank', 'noopener'); return; }
+  const u = CL.durls[x.id];
+  if(!u || u.exp<=Date.now()){ toast('Готовлю ссылку на файл…'); resolveDocUrls(true).then(() => { const v = CL.durls[x.id]; if(v && v.exp>Date.now()) openDocViewer(id); }); return; }
+  const touch = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || window.innerWidth<=760; // телефон: PDF — во встроенном просмотрщике
+  const body = isImgDoc(x) ? `<img class="doc-img" src="${esc(u.view)}" alt="${esc(x.title)}">`
+    : touch ? `<div class="doc-pdf-m"><b>📄</b><p>PDF удобнее смотреть во встроенном просмотрщике телефона</p><a class="btn" href="${esc(u.view)}" target="_blank" rel="noopener" data-a="ext">Открыть PDF</a></div>`
+    : `<iframe class="doc-frame" src="${esc(u.view)}" title="${esc(x.title)}"></iframe>`;
+  openModal(`<h3>${esc(x.title || 'Документ')}</h3><div class="mini" style="margin:-8px 0 14px">${esc(docMeta(x))}</div>
+    ${body}${(x.note||'').trim() ? `<p class="etext" style="-webkit-line-clamp:unset;display:block">${esc(x.note)}</p>` : ''}
+    <div class="mfoot"><button class="btn ghost" data-a="docEdit" data-id="${x.id}">✎ Изменить</button>
+      <a class="btn ghost" href="${esc(u.dl)}" data-a="ext">⬇ Скачать</a>
+      <a class="btn ghost" href="${esc(u.view)}" target="_blank" rel="noopener" data-a="ext">Открыть в новой вкладке</a>
+      <button class="btn" data-a="mclose">Закрыть</button></div>`, true);
+}
+function openDocForm(id, tripId){
+  const x = id ? byId(S.docs, id) : {id:uid(), tripId, type:'link', title:'', cat:'stay', date:'', note:'', url:'', created:Date.now()};
+  if(!x) return;
+  const isLink = x.type==='link';
+  openForm({title: id ? (isLink ? 'Ссылка на бронирование' : 'Документ') : 'Ссылка на бронирование', values:x, fields:[
+    {k:'title', label:'Название', req:true, ph: isLink ? 'Например: Отель в Киото, Booking' : ''},
+    ...(isLink ? [{k:'url', label:'Ссылка', type:'url', req:true, ph:'https://…'}] : []),
+    {k:'cat', label:'Категория', type:'select', options:DOC_CATS.map(c => [c[0], c[1]+' '+c[2]]), half:1},
+    {k:'date', label:'Дата (необязательно)', type:'date', half:1},
+    {k:'note', label:'Заметка (необязательно)', type:'textarea', rows:3, ph:'Номер брони, время заезда, что взять с собой'},
+    ...(!isLink && x.name ? [{type:'hint', label:`Файл: ${x.name} · ${fmtSize(x.size)}`}] : [])
+  ],
+  validate: v => isLink && !safeUrl(v.url) ? 'Ссылка должна начинаться с https://' : '',
+  onSave: v => { Object.assign(x, v); if(isLink) x.url = x.url.trim(); if(!id) S.docs.push(x); delete CL.durls[x.id]; /* имя для скачивания обновится */ },
+  onDelete: id ? () => { del(S.docs, x.id); removeDocFiles([x]); } : null});
+}
+function deleteDoc(id){
+  const x = byId(S.docs, id); if(!x) return;
+  if(!confirm(`Удалить «${x.title || 'документ'}»?${x.type==='file' ? ' Файл будет удалён из облака.' : ''}`)) return;
+  del(S.docs, x.id); removeDocFiles([x]); save(); toast('Документ удалён');
+}
+function removeDocFiles(list){
+  const paths = list.filter(x => x.type==='file' && x.path).map(x => x.path);
+  list.forEach(x => delete CL.durls[x.id]);
+  if(paths.length && CL.sb) CL.sb.storage.from(SB_DOCS).remove(paths).then(r => { if(r && r.error) console.warn('doc remove', r.error); }).catch(() => {});
+}
+function docErrText(e){
+  if(e && e.userMsg) return e.userMsg;
+  const m = String((e && (e.message || e.error)) || ''), st = +((e && (e.status || e.statusCode)) || 0);
+  if((e && e.net) || isNetErr(e)) return 'Нет связи с интернетом — попробуй ещё раз';
+  if(st===413 || /too large|maximum allowed size|exceeded the maximum/i.test(m)) return 'Файл слишком большой — лимит 20 МБ на документ';
+  if(st===415 || /mime/i.test(m)) return 'Этот формат не поддерживается — нужен PDF, JPG, PNG или WEBP';
+  if(/bucket not found/i.test(m)) return 'Хранилище документов ещё не создано в Supabase — нужно выполнить скрипт travel-documents.sql';
+  if(/quota|storage limit|space/i.test(m)) return 'Закончилось место в бесплатном хранилище Supabase (1 ГБ)';
+  if(st===401 || st===403 || /jwt|unauthori|row-level security|policy/i.test(m)) return 'Нет доступа к хранилищу — выйди и войди снова. Если не поможет, проверь, выполнен ли скрипт travel-documents.sql';
+  return 'Не получилось: '+(m || 'ошибка '+st);
+}
+/* загрузка с прогрессом: напрямую в Storage API, с токеном текущего входа */
+async function uploadWithProgress(bucket, path, blob, mime, onp){
+  const r = await CL.sb.auth.getSession(), tok = r && r.data && r.data.session && r.data.session.access_token;
+  if(!tok) throw {userMsg:'Вход истёк — выйди и войди снова'};
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', `${SB_URL}/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`);
+    x.setRequestHeader('authorization', 'Bearer '+tok);
+    x.setRequestHeader('apikey', SB_KEY);
+    x.setRequestHeader('content-type', mime);
+    x.setRequestHeader('x-upsert', 'false');
+    x.setRequestHeader('cache-control', 'max-age=3600');
+    x.timeout = 15*60*1000;
+    x.upload.onprogress = e => { if(e.lengthComputable) onp(e.loaded/e.total); };
+    x.onload = () => {
+      if(x.status>=200 && x.status<300){ onp(1); return res(); }
+      let m = {}; try { m = JSON.parse(x.responseText) || {}; } catch(err) {}
+      rej({status: +(m.statusCode || x.status), message: m.message || m.error || x.statusText});
+    };
+    x.onerror = () => rej({net:true});
+    x.ontimeout = () => rej({net:true});
+    x.send(blob);
+  });
+}
+let DOCUP = null;
+function pickDocFiles(tripId){ DOCUP = {tripId}; const f = $id('docFile'); f.value = ''; f.click(); }
+function openDocUpload(files){
+  if(!DOCUP) return;
+  DOCUP.items = files.map(f => {
+    const mime = docMime(f);
+    const err = !mime ? 'Этот формат не поддерживается — нужен PDF, JPG, PNG или WEBP'
+      : !/^image\//.test(mime) && f.size>DOC_MAX ? 'Файл больше 20 МБ — это лимит для одного документа' : '';
+    return {f, mime, id:uid(), err};
+  });
+  const its = DOCUP.items;
+  openModal(`<h3>Загрузка документов</h3>
+    <div class="fg">
+      <div class="f half"><span>Категория</span><select id="dupCat">${DOC_CATS.map(c => `<option value="${c[0]}">${c[1]} ${c[2]}</option>`).join('')}</select></div>
+      <div class="f half"><span>Дата (необязательно)</span><input id="dupDate" type="date"></div>
+      <div class="f"><span>Заметка (необязательно)</span><input id="dupNote" placeholder="Например: номер брони"></div>
+    </div>
+    <div class="lbl">${its.length} ${plural(its.length,'файл','файла','файлов')}</div>
+    <div class="ups">${its.map(it => `<div class="up" id="up-${it.id}"><div class="row between gap"><b class="up-n">${esc(it.f.name)}</b><span class="mini">${fmtSize(it.f.size)}</span></div>
+      <div class="bar"><i style="width:0%"></i></div><div class="up-s mini ${it.err?'err':''}">${it.err ? esc(it.err) : 'Готов к загрузке'}</div></div>`).join('')}</div>
+    <p class="muted sm">Название возьмётся из имени файла — его можно поменять потом. Большие фото уменьшаются перед загрузкой, PDF загружаются как есть.</p>
+    <div class="mfoot"><button class="btn ghost" data-a="mclose" id="dupCancel">Отмена</button><button class="btn" data-a="docUpload" id="dupGo" ${its.every(i => i.err) ? 'disabled' : ''}>Загрузить</button></div>`);
+}
+async function runDocUpload(){
+  const up = DOCUP, t = up && byId(S.trips, up.tripId);
+  if(!up || up.running || !t) return;
+  up.running = true; CL.hold++;
+  const cat = $id('dupCat').value, date = $id('dupDate').value, note = $id('dupNote').value.trim();
+  const go = $id('dupGo'); go.disabled = true; go.textContent = 'Загружаю…';
+  ['dupCat','dupDate','dupNote'].forEach(k => { $id(k).disabled = true; });
+  let ok = 0, bad = 0;
+  for(const it of up.items){
+    const set = (p, txt, err) => { const row = $id('up-'+it.id); if(!row) return; row.querySelector('.bar i').style.width = p+'%';
+      const st = row.querySelector('.up-s'); st.textContent = txt; st.classList.toggle('err', !!err); };
+    if(it.err){ bad++; continue; }
+    try {
+      let blob = it.f, mime = it.mime;
+      if(/^image\//.test(mime) && blob.size>1.5*1048576){
+        set(0, 'Уменьшаю фото…');
+        try { const small = dataUrlToBlob(await compressImage(blob, 2560, 0.86)); if(small.size<blob.size){ blob = small; mime = small.type; } } catch(err) {}
+      }
+      if(blob.size>DOC_MAX) throw {userMsg:'Файл больше 20 МБ — это лимит для одного документа'};
+      set(0, 'Загружаю… 0%');
+      const docId = uid(), path = CL.uid+'/'+docId+'.'+DOC_TYPES[mime];
+      await uploadWithProgress(SB_DOCS, path, blob, mime, p => set(Math.round(p*100), 'Загружаю… '+Math.round(p*100)+'%'));
+      S.docs.push({id:docId, tripId:t.id, type:'file', title:(it.f.name.replace(/\.[^.]+$/,'') || 'Документ').slice(0,120), cat, date, note,
+        path, mime, size:blob.size, name:it.f.name, created:Date.now()});
+      save();
+      set(100, '✓ Загружено'); ok++;
+    } catch(err) { bad++; set(0, docErrText(err), true); }
+  }
+  CL.hold--; up.running = false; DOCUP = null;
+  if($id('dupGo')){ const g = $id('dupGo'); g.textContent = 'Готово'; g.disabled = false; g.dataset.a = 'mclose'; $id('dupCancel').hidden = true; }
+  toast(bad ? `Загружено ${ok} из ${ok+bad}` : ok===1 ? 'Документ загружен' : `Загружено документов: ${ok}`);
+}
+document.getElementById('docFile').addEventListener('change', e => {
+  const files = [...e.target.files]; e.target.value = '';
+  if(files.length) openDocUpload(files); else DOCUP = null;
+});
+
 /* =========================================================
    ОБЛАКО · вход, синхронизация, изображения, перенос
    Каждая запись кабинета хранится отдельной строкой таблицы cabinet_items:
    kind — раздел (tasks, habits, journal…), item_id — id записи, data — сама запись.
    ========================================================= */
-const ARR_KINDS = ['habits','tasks','focus','ideas','refs','journal','courses','books','goals','posts','trips','stops'];
+const ARR_KINDS = ['habits','tasks','focus','ideas','refs','journal','courses','books','goals','posts','trips','stops','docs'];
 const MAP_KINDS = [['habitLog','habit_log'],['days','days'],['weekly','weekly']];
 const SET_KEYS = ['v','clean','habitsSeeded','name','timer','timerCfg','blogSeeded','postsMigrated'];
 const DEL = '-';
-const TRAVEL_KINDS = ['trips','stops'];
+const TRAVEL_KINDS = ['trips','stops','docs'];
 /* в какой таблице живёт запись: поездки и остановки (и их порядок) — в travel_items, остальное — в cabinet_items */
 const isTravelKey = key => { const i = key.indexOf('|'), kind = key.slice(0,i); return TRAVEL_KINDS.includes(kind) || (kind==='order' && TRAVEL_KINDS.includes(key.slice(i+1))); };
 const tableOfKey = key => isTravelKey(key) ? SB_TRAVEL : SB_TABLE;
@@ -2195,14 +2447,15 @@ function adoptMedia(st, media){
   usedMediaIds(st).forEach(id => { MEDIA[id] = media[id]; CL.pmedia[id] = media[id]; delete CL.urls[id]; });
   savePendingMedia();
 }
-async function removeAllCloudMedia(){
+async function removeAllCloudMedia(bucket){
+  bucket = bucket || SB_BUCKET;
   try {
     for(let i=0;i<50;i++){
-      const {data, error} = await CL.sb.storage.from(SB_BUCKET).list(CL.uid, {limit:100});
+      const {data, error} = await CL.sb.storage.from(bucket).list(CL.uid, {limit:100});
       if(error || !data || !data.length) break;
       const paths = data.filter(f => f.name && !CL.pmedia[f.name]).map(f => CL.uid+'/'+f.name);
       if(!paths.length) break;
-      const r = await CL.sb.storage.from(SB_BUCKET).remove(paths); if(r.error) break;
+      const r = await CL.sb.storage.from(bucket).remove(paths); if(r.error) break;
     }
   } catch(err) {}
 }
