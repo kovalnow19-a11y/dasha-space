@@ -402,6 +402,32 @@ a.btn{text-decoration:none;display:inline-block}
 .doc.flash{box-shadow:0 0 0 3px var(--lilac),var(--shadow)}
 .f.off{display:none}
 
+/* ---------- рейсы и пересадки ---------- */
+.fsum{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.fsum span{font-size:12px;font-weight:800;background:#eef1ea;color:var(--green);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.fsum span.warn{background:#fbe7e3;color:#a33b2a}
+.fls{display:grid;gap:10px;margin:6px 0 4px}
+.fl{background:#f7f9f4;border-radius:20px;padding:14px 16px}
+.fl-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.fl-h b{color:var(--green);font-size:16px}
+.fl-r{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:center}
+.fl-p{display:flex;flex-direction:column;gap:1px;min-width:0}
+.fl-p.r{text-align:right;align-items:flex-end}
+.fl-p b{font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--green);font-variant-numeric:tabular-nums;line-height:1.1}
+.fl-p span{font-weight:700;word-break:break-word}
+.fl-p em{font-style:normal;font-size:12px;color:var(--muted);font-weight:600}
+.fl-d{text-align:center;font-size:12.5px;font-weight:800;color:var(--muted);white-space:nowrap}
+.fl-d i{display:block;height:2px;min-width:40px;background:linear-gradient(90deg,var(--lime),var(--lilac));margin:4px 0;border-radius:2px}
+.nd{display:inline-block;font-size:11px;font-weight:800;background:var(--lilac);color:#fff;border-radius:999px;padding:0 6px;margin-left:4px;vertical-align:2px}
+.lay{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;font-weight:800;color:var(--green);font-size:14px;padding:4px 0}
+.lay small{font-weight:600;color:var(--muted)}
+.fwarn{background:#fbe7e3;color:#a33b2a;border-radius:12px;padding:7px 11px;font-size:13px;font-weight:700;margin-top:8px}
+.fnote{color:var(--muted);font-size:12.5px;font-weight:600;margin-top:8px}
+.ftot{background:linear-gradient(120deg,#e6f3d6,#f3e3f6);border-radius:18px;padding:12px 16px;font-weight:800;color:var(--green);margin-top:12px}
+.ftot small{display:block;font-weight:600;color:#4b5a43;font-size:12.5px}
+.stay.dep,.stay.arr{background:#eef1fb}
+@media(max-width:760px){.fl{padding:12px}.fl-p b{font-size:19px}.fl-r{gap:6px}}
+
 /* ---------- облако: вход и статус синхронизации ---------- */
 .sync{border:0;background:#fff;border-radius:999px;padding:7px 12px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;box-shadow:var(--shadow);display:flex;gap:6px;align-items:center}
 .sync[hidden]{display:none}
@@ -1731,6 +1757,10 @@ const ACT = {
   ext: () => {},
   tripTab: d => { UI.ttab = d.v; render(); },
   stayOpen: d => showDoc(d.id),
+  flightsOpen: d => openFlights(d.id),
+  flightNew: d => openFlightForm(d.id, null),
+  flightEdit: d => openFlightForm(d.id, d.seg),
+  flightDel: d => deleteFlight(d.id, d.seg),
   docCat: d => { UI.dcat = d.v; render(); },
   docFiles: d => pickDocFiles(d.trip),
   docLink: d => openDocForm(null, d.trip),
@@ -1904,10 +1934,11 @@ function tripView(t){
 function dayCard(t, g, isToday){
   const list = stopGroup(t, g.day), ev = g.day ? (stayEvents(t)[g.day] || []) : [];
   const swap = ev.some(e => e.type==='out') && ev.some(e => e.type==='in');
+  const all = g.day ? dayTimeline(ev, flightEvents(t)[g.day] || []) : [];
   return `<section class="card ${isToday?'glow':''} ${swap?'swap':''}">
     <div class="ch"><div><h2>${g.title}</h2><div class="day-sub">${isToday ? 'Сегодня · ' : ''}${g.sub}</div>${swap ? '<span class="swap-b">🔄 Смена жилья</span>' : ''}</div>
       <button class="btn sm ghost" data-a="stopNew" data-trip="${t.id}" data-day="${g.day}">+ Остановка</button></div>
-    ${ev.length ? `<div class="stays">${ev.map(stayLine).join('')}</div>` : ''}
+    ${all.length ? `<div class="stays">${all.map(e => e.seg ? flightLine(e) : stayLine(e)).join('')}</div>` : ''}
     ${list.map((x,i) => `<div class="stop">
       <div class="stop-time ${x.time?'':'none'}">${x.time ? esc(x.time) : '—'}</div>
       <div class="stop-b" data-a="stopEdit" data-id="${x.id}">
@@ -2027,8 +2058,8 @@ function docRow(x){
     : (ok ? `<button class="btn sm" data-a="docView" data-id="${x.id}">Просмотр</button><a class="btn sm ghost" href="${esc(u.dl)}" data-a="ext">⬇ Скачать</a>`
           : `<button class="btn sm" data-a="docWait">Просмотр</button>`);
   return `<div class="doc" id="doc-${x.id}">${x.type==='link' && safeUrl(x.url) ? `<a href="${esc(x.url.trim())}" target="_blank" rel="noopener" data-a="ext" style="display:contents">${th}</a>` : th}
-    <div class="doc-b" data-a="docEdit" data-id="${x.id}"><b>${esc(x.title || 'Без названия')}</b><div class="mini">${esc(docMeta(x))}</div>${(x.note||'').trim() ? `<p class="doc-n">${esc(x.note)}</p>` : ''}</div>
-    <div class="doc-act">${acts}<button class="ic" data-a="docEdit" data-id="${x.id}" title="Переименовать или изменить">✎</button><button class="ic" data-a="docDel" data-id="${x.id}" title="Удалить">×</button></div>
+    <div class="doc-b" data-a="docEdit" data-id="${x.id}"><b>${esc(x.title || 'Без названия')}</b><div class="mini">${esc(docMeta(x))}</div>${isFlightDoc(x) ? flightSummary(x) : ''}${(x.note||'').trim() ? `<p class="doc-n">${esc(x.note)}</p>` : ''}</div>
+    <div class="doc-act">${isFlightDoc(x) ? `<button class="btn sm ghost" data-a="flightsOpen" data-id="${x.id}">✈️ ${(x.flights||[]).length ? 'Рейсы ('+x.flights.length+')' : 'Добавить рейсы'}</button>` : ''}${acts}<button class="ic" data-a="docEdit" data-id="${x.id}" title="Переименовать или изменить">✎</button><button class="ic" data-a="docDel" data-id="${x.id}" title="Удалить">×</button></div>
   </div>`;
 }
 /* временные ссылки на файлы (на 1 час) — только для открытой поездки */
@@ -2061,7 +2092,7 @@ function openDocViewer(id){
     : `<iframe class="doc-frame" src="${esc(docViewUrl(x,u))}" title="${esc(x.title)}"></iframe>`;
   openModal(`<h3>${esc(x.title || 'Документ')}</h3><div class="mini" style="margin:-8px 0 14px">${esc(docMeta(x))}</div>
     ${body}${(x.note||'').trim() ? `<p class="etext" style="-webkit-line-clamp:unset;display:block">${esc(x.note)}</p>` : ''}
-    <div class="mfoot"><button class="btn ghost" data-a="docEdit" data-id="${x.id}">✎ Изменить</button>
+    <div class="mfoot">${isFlightDoc(x) ? `<button class="btn ghost" data-a="flightsOpen" data-id="${x.id}">✈️ Рейсы</button>` : ''}<button class="btn ghost" data-a="docEdit" data-id="${x.id}">✎ Изменить</button>
       <a class="btn ghost" href="${esc(u.dl)}" data-a="ext">⬇ Скачать</a>
       <a class="btn ghost" href="${esc(docViewUrl(x,u))}" target="_blank" rel="noopener" data-a="ext">Открыть в новой вкладке</a>
       <button class="btn" data-a="mclose">Закрыть</button></div>`, true);
@@ -2197,6 +2228,170 @@ document.getElementById('docFile').addEventListener('change', e => {
   const files = [...e.target.files]; e.target.value = '';
   if(files.length) openDocUpload(files); else DOCUP = null;
 });
+
+/* ---------- рейсы: сегменты авиабилета, длительность, пересадки ----------
+   Рейсы хранятся внутри документа категории «Авиабилеты» (поле flights) и синхронизируются вместе с ним.
+   Время вводится местное; часовой пояс аэропорта — IANA (Asia/Tokyo) или смещение (UTC+3).
+   Без часовых поясов длительность не считается — ничего не угадываем. */
+const isFlightDoc = x => docCatOf(x.cat)[0]==='flights';
+const TZ_CACHE = {};
+function tzParse(tz){
+  tz = String(tz||'').trim(); if(!tz) return null;
+  if(/^(utc|gmt|z)$/i.test(tz)) return {fixed:0};
+  const m = /^(?:utc|gmt)?\s*([+\-−])\s*(\d{1,2})(?:[:.]?(\d{2}))?$/i.exec(tz);
+  if(m){ const v = (m[1]==='+' ? 1 : -1)*(+m[2]*60 + +(m[3]||0)); return Math.abs(v)<=14*60 ? {fixed:v} : null; }
+  try { TZ_CACHE[tz] = TZ_CACHE[tz] || new Intl.DateTimeFormat('en-US', {timeZone:tz, hourCycle:'h23', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'}); return {iana:tz}; }
+  catch(err) { return null; }
+}
+function tzOffset(z, ms){
+  if(z.fixed!=null) return z.fixed;
+  const p = {}; TZ_CACHE[z.iana].formatToParts(new Date(ms)).forEach(x => { p[x.type] = x.value; });
+  return Math.round((Date.UTC(+p.year, +p.month-1, +p.day, +p.hour%24, +p.minute, +p.second) - Math.floor(ms/1000)*1000)/60000);
+}
+const naive = (date, time) => { if(!/^\d{4}-\d\d-\d\d$/.test(date||'') || !/^\d\d:\d\d/.test(time||'')) return null; const [y,mo,d] = date.split('-').map(Number), [h,mi] = time.split(':').map(Number); return Date.UTC(y, mo-1, d, h, mi); };
+/* местные дата+время в часовом поясе → момент времени (мс, UTC) */
+function toUtc(date, time, tz){
+  const z = tzParse(tz), n = naive(date, time); if(!z || n==null) return null;
+  let off = tzOffset(z, n), u = n - off*60000; const off2 = tzOffset(z, u);
+  if(off2!==off) u = n - off2*60000;
+  return u;
+}
+function tzLabel(tz, ms){
+  const z = tzParse(tz); if(!z) return '';
+  const o = tzOffset(z, ms==null ? Date.now() : ms), a = Math.abs(o);
+  return 'UTC'+(o<0 ? '−' : '+')+Math.floor(a/60)+(a%60 ? ':'+pad(a%60) : '');
+}
+function fmtDur(ms){ const m = Math.round(Math.abs(ms)/60000), h = Math.floor(m/60); return (h ? h+' ч' : '')+(h && m%60 ? ' ' : '')+(m%60 || !h ? m%60+' мин' : ''); }
+const sameAirport = (a, b) => !!(a && b && a.trim().toLowerCase()===b.trim().toLowerCase());
+function segCalc(s){
+  const dep = toUtc(s.depDate, s.depTime, s.depTz), arr = toUtc(s.arrDate, s.arrTime, s.arrTz);
+  const dur = dep!=null && arr!=null ? arr-dep : null, warn = [];
+  if(dur!=null && dur<=0) warn.push('Прилёт получается раньше вылета — проверь даты, время и часовые пояса');
+  else if(dur!=null && dur>24*36e5) warn.push('Перелёт дольше 24 часов — проверь даты');
+  const miss = dur==null && naive(s.depDate, s.depTime)!=null && naive(s.arrDate, s.arrTime)!=null && (!tzParse(s.depTz) || !tzParse(s.arrTz));
+  return {dep, arr, dur, warn, miss};
+}
+/* рейсы по порядку: по моменту вылета, без пояса — по местным дате и времени */
+function segsSorted(x){
+  return (x.flights||[]).map((s,i) => ({s, i, c:segCalc(s)}))
+    .sort((a,b) => { const ka = a.c.dep ?? naive(a.s.depDate, a.s.depTime||'00:00'), kb = b.c.dep ?? naive(b.s.depDate, b.s.depTime||'00:00');
+      return (ka==null ? 1 : 0)-(kb==null ? 1 : 0) || (ka||0)-(kb||0) || a.i-b.i; });
+}
+/* пересадка между прилётом prev и вылетом next */
+function layover(prev, next){
+  const p = prev.c, n = next.c; let ms = null;
+  if(p.arr!=null && n.dep!=null) ms = n.dep - p.arr;
+  else if(sameAirport(prev.s.to, next.s.from)){ const a = naive(prev.s.arrDate, prev.s.arrTime), b = naive(next.s.depDate, next.s.depTime); if(a!=null && b!=null) ms = b-a; } // один аэропорт — один пояс
+  const warn = [];
+  if(ms!=null && ms<0) warn.push('Рейсы пересекаются по времени — следующий вылет раньше прилёта предыдущего');
+  else if(ms!=null && ms<60*60000) warn.push(`Короткая пересадка. Минимальное время стыковки у каждого аэропорта своё — проверь его для ${prev.s.to || 'аэропорта пересадки'} у авиакомпании или в аэропорту`);
+  if(prev.s.to && next.s.from && !sameAirport(prev.s.to, next.s.from)) warn.push(`Прилёт в ${prev.s.to}, вылет из ${next.s.from} — понадобится переезд между аэропортами`);
+  return {ms, warn, at: prev.s.to || next.s.from || ''};
+}
+function flightTotals(x){
+  const list = segsSorted(x), lays = list.slice(1).map((n,i) => layover(list[i], n));
+  const first = list[0], last = list[list.length-1];
+  const total = first && last && first.c.dep!=null && last.c.arr!=null ? last.c.arr-first.c.dep : null;
+  const warns = list.reduce((a,v) => a+v.c.warn.length, 0) + lays.reduce((a,l) => a+l.warn.length, 0);
+  return {list, lays, total, warns};
+}
+const segName = s => [s.airline, s.number].map(v => (v||'').trim()).filter(Boolean).join(' ');
+function flightSummary(x){
+  const T = flightTotals(x); if(!T.list.length) return '';
+  const path = [T.list[0].s.from || '?'].concat(T.list.map(v => v.s.to || '?')).join(' → ');
+  const n = T.lays.length;
+  return `<div class="fsum"><span>✈️ ${esc(path)}</span>${T.total!=null ? `<span>⏱ ${fmtDur(T.total)} в пути</span>` : ''}<span>${n ? n+' '+plural(n,'пересадка','пересадки','пересадок') : 'без пересадок'}</span>${T.warns ? '<span class="warn">⚠️ проверь данные</span>' : ''}</div>`;
+}
+function openFlights(id){
+  const x = byId(S.docs, id); if(!x) return;
+  const T = flightTotals(x), dt = d => d ? fmtD(d, {day:'numeric', month:'short'}) : 'дата не указана';
+  const card = v => { const s = v.s, c = v.c, nd = s.depDate && s.arrDate && s.arrDate>s.depDate ? stayNights(s.depDate, s.arrDate) : 0;
+    return `<div class="fl">
+      <div class="fl-h"><b>${esc(s.from || '?')} → ${esc(s.to || '?')}</b>${segName(s) ? `<span class="badge">${esc(segName(s))}</span>` : ''}<div class="sp"></div>
+        <button class="ic" data-a="flightEdit" data-id="${x.id}" data-seg="${s.id}" title="Изменить рейс">✎</button><button class="ic" data-a="flightDel" data-id="${x.id}" data-seg="${s.id}" title="Удалить рейс">×</button></div>
+      <div class="fl-r">
+        <div class="fl-p"><b>${esc(s.depTime || '—:—')}</b><span>${esc([s.from, s.fromCity].filter(Boolean).join(' · ') || 'вылет')}</span><em>${dt(s.depDate)}${tzParse(s.depTz) ? ' · '+tzLabel(s.depTz, c.dep) : ''}</em></div>
+        <div class="fl-d">${c.dur!=null && c.dur>0 ? fmtDur(c.dur) : '—'}<i></i>в полёте</div>
+        <div class="fl-p r"><b>${esc(s.arrTime || '—:—')}${nd ? `<span class="nd">+${nd}</span>` : ''}</b><span>${esc([s.to, s.toCity].filter(Boolean).join(' · ') || 'прилёт')}</span><em>${dt(s.arrDate)}${tzParse(s.arrTz) ? ' · '+tzLabel(s.arrTz, c.arr) : ''}</em></div>
+      </div>
+      ${c.warn.map(w => `<div class="fwarn">⚠️ ${esc(w)}</div>`).join('')}
+      ${c.miss ? '<div class="fnote">Укажи часовые пояса вылета и прилёта — тогда посчитаю время в полёте.</div>' : ''}
+    </div>`; };
+  const lay = l => `<div><div class="lay">🔄 Пересадка${l.at ? ' в '+esc(l.at) : ''}: ${l.ms!=null ? (l.ms<0 ? '−' : '')+fmtDur(l.ms) : '<small>укажи время и часовые пояса</small>'}</div>${l.warn.map(w => `<div class="fwarn">⚠️ ${esc(w)}</div>`).join('')}</div>`;
+  openModal(`<h3>✈️ ${esc(x.title || 'Авиабилет')}</h3>
+    ${T.list.length ? `<div class="fls">${T.list.map((v,i) => (i ? lay(T.lays[i-1]) : '')+card(v)).join('')}</div>
+      ${T.list.length>1 || T.total!=null ? `<div class="ftot">${T.total!=null ? `Всё путешествие: ${fmtDur(T.total)}` : 'Всё путешествие: —'}<small>${T.total!=null ? 'от первого вылета до последнего прилёта, с учётом часовых поясов' : 'нужны время и часовые пояса первого вылета и последнего прилёта'}${T.lays.length ? ` · ${T.lays.length} ${plural(T.lays.length,'пересадка','пересадки','пересадок')}` : ''}</small></div>` : ''}`
+      : '<p class="empty">Рейсов пока нет. Добавь первый — аэропорты, даты и местное время вылета и прилёта.</p>'}
+    <div class="mfoot"><button class="btn ghost" data-a="flightNew" data-id="${x.id}">+ Рейс</button><button class="btn" data-a="mclose">Готово</button></div>`, true);
+}
+let TZ_LIST = null;
+function tzDatalist(){
+  if(!TZ_LIST){ try { TZ_LIST = Intl.supportedValuesOf('timeZone'); } catch(err) { TZ_LIST = []; } }
+  return `<datalist id="tzList">${TZ_LIST.map(z => `<option value="${z}">`).join('')}</datalist>`;
+}
+function openFlightForm(docId, segId){
+  const x = byId(S.docs, docId); if(!x) return;
+  const list = x.flights || [], cur = segId ? list.find(s => s.id===segId) : null; if(segId && !cur) return;
+  const prev = segsSorted(x).map(v => v.s).pop();
+  /* следующий рейс начинается там, куда прилетел предыдущий — это подсказка, её можно поменять */
+  const s = cur || {id:uid(), from: prev ? prev.to||'' : '', fromCity: prev ? prev.toCity||'' : '', depDate: prev ? prev.arrDate||'' : '', depTime:'', depTz: prev ? prev.arrTz||'' : '',
+    to:'', toCity:'', arrDate:'', arrTime:'', arrTz:'', airline:'', number:''};
+  openForm({title: cur ? 'Рейс' : 'Новый рейс', wide:true, values:s, fields:[
+    {type:'h', label:'🛫 Вылет'},
+    {k:'from', label:'Аэропорт', half:1, ph:'SVO'}, {k:'fromCity', label:'Город', half:1, ph:'Москва'},
+    {k:'depDate', label:'Дата', type:'date', half:1}, {k:'depTime', label:'Местное время', type:'time', half:1},
+    {k:'depTz', label:'Часовой пояс аэропорта', ph:'Europe/Moscow или UTC+3'},
+    {type:'h', label:'🛬 Прилёт'},
+    {k:'to', label:'Аэропорт', half:1, ph:'NRT'}, {k:'toCity', label:'Город', half:1, ph:'Токио'},
+    {k:'arrDate', label:'Дата', type:'date', half:1}, {k:'arrTime', label:'Местное время', type:'time', half:1},
+    {k:'arrTz', label:'Часовой пояс аэропорта', ph:'Asia/Tokyo или UTC+9'},
+    {type:'h', label:'Рейс (необязательно)'},
+    {k:'airline', label:'Авиакомпания', half:1}, {k:'number', label:'Номер рейса', half:1, ph:'SU 260'},
+    {type:'hint', id:'segCalc', label:''}
+  ],
+  onInput: (form, name) => {
+    ['depTz','arrTz'].forEach(k => form.elements[k].setAttribute('list', 'tzList'));
+    if(name==='depDate' && !form.elements.arrDate.value) form.elements.arrDate.value = form.elements.depDate.value;
+    const v = {}; ['depDate','depTime','depTz','arrDate','arrTime','arrTz'].forEach(k => { v[k] = form.elements[k].value; });
+    const c = segCalc(v), h = $id('segCalc'), bad = ['depTz','arrTz'].filter(k => v[k].trim() && !tzParse(v[k]));
+    h.textContent = bad.length ? '⚠️ Не узнаю часовой пояс — выбери из списка (например, Asia/Tokyo) или напиши смещение (UTC+9)'
+      : c.warn.length ? '⚠️ '+c.warn[0] : c.dur!=null ? '⏱ В полёте: '+fmtDur(c.dur) : c.miss ? 'Укажи часовые пояса — тогда посчитаю время в полёте' : '';
+  },
+  validate: v => {
+    if(!(v.from||'').trim() && !(v.to||'').trim()) return 'Укажи хотя бы аэропорт вылета или прилёта';
+    if((v.depTz.trim() && !tzParse(v.depTz)) || (v.arrTz.trim() && !tzParse(v.arrTz))) return 'Не узнаю часовой пояс — например, Asia/Tokyo или UTC+9';
+    return '';
+  },
+  onSave: v => { Object.keys(v).forEach(k => { v[k] = String(v[k]||'').trim(); }); if(cur) Object.assign(cur, v); else { x.flights = list.concat([Object.assign(s, v)]); } },
+  after: () => openFlights(x.id)});
+  $id('mform').insertAdjacentHTML('beforeend', tzDatalist());
+  ['depTz','arrTz'].forEach(k => $id('mform').elements[k].setAttribute('list', 'tzList'));
+}
+function deleteFlight(docId, segId){
+  const x = byId(S.docs, docId), s = x && (x.flights||[]).find(f => f.id===segId); if(!s) return;
+  if(!confirm(`Удалить рейс ${s.from || '?'} → ${s.to || '?'}?`)) return;
+  x.flights = x.flights.filter(f => f.id!==segId); save(); openFlights(x.id);
+}
+/* события рейсов в маршруте: вылет — в день вылета, прилёт — в день прилёта (местные даты) */
+function flightEvents(t){
+  const out = {}, add = (d, e) => { (out[d] = out[d] || []).push(e); };
+  tripDocs(t).filter(isFlightDoc).forEach(x => (x.flights||[]).forEach(s => {
+    if(s.depDate) add(s.depDate, {type:'dep', seg:s, doc:x, time:s.depTime||''});
+    if(s.arrDate) add(s.arrDate, {type:'arr', seg:s, doc:x, time:s.arrTime||''});
+  }));
+  return out;
+}
+function flightLine(e){
+  const s = e.seg, dep = e.type==='dep', nm = segName(s);
+  const what = dep ? `${s.from || '?'}${s.fromCity ? ' '+s.fromCity : ''} → ${s.to || '?'}` : `${s.to || '?'}${s.toCity ? ' '+s.toCity : ''}`;
+  return `<div class="stay ${e.type}"><span class="stay-i">${dep ? '🛫' : '🛬'}</span><div class="stay-b"><span class="stay-l">${dep ? 'Вылет' : 'Прилёт'}:</span>
+    <button class="stay-h" data-a="flightsOpen" data-id="${e.doc.id}" title="Открыть рейсы">${esc(what)}${nm ? ' · '+esc(nm) : ''}</button>${e.time ? `<span class="stay-t">${esc(e.time)}</span>` : ''}</div></div>`;
+}
+/* события дня по времени; без времени — проживание в начале дня, выезд утром, заселение вечером (только для порядка, не показывается) */
+function dayTimeline(stays, flights){
+  const rank = {stay:0, out:1, dep:2, arr:3, in:4}, key = e => e.time || {stay:'00:00', out:'00:01', dep:'23:57', arr:'23:58', in:'23:59'}[e.type];
+  return stays.concat(flights).map((e,i) => ({e,i})).sort((a,b) => key(a.e).localeCompare(key(b.e)) || rank[a.e.type]-rank[b.e.type] || a.i-b.i).map(v => v.e);
+}
 
 /* ---------- проживание: бронирования жилья → маршрут по дням ----------
    Ничего не хранится отдельно: отметки в маршруте каждый раз считаются из документов категории «Жильё»,
