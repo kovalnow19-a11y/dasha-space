@@ -319,6 +319,25 @@ select:disabled{opacity:.6}
   .toast{bottom:104px}
   .tabs .tab{padding:8px 14px}
 }
+
+/* ---------- облако: вход и статус синхронизации ---------- */
+.sync{border:0;background:#fff;border-radius:999px;padding:7px 12px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;box-shadow:var(--shadow);display:flex;gap:6px;align-items:center}
+.sync[hidden]{display:none}
+.sync.ok{color:var(--green)}
+.sync.err{color:#a33b2a;background:#fbe7e3}
+.auth{position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}
+.auth[hidden]{display:none}
+.auth-card{width:min(420px,100%);background:#fff;border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.auth-top{padding:26px 26px 22px;background:linear-gradient(120deg,#B6D98C 0%,#cfdcb8 38%,#dcc6e1 72%,#C98FD3 100%)}
+.auth-top h1{font-size:30px;line-height:1.05;letter-spacing:-.04em;font-weight:800;margin:14px 0 4px;color:var(--green)}
+.auth-top p{margin:0;font-weight:600;color:#33452a}
+.auth-body{padding:22px 26px 26px}
+.auth-body input{font-size:16px}
+.auth-body .btn{width:100%;margin-top:6px}
+.auth-err{background:#fbe7e3;color:#a33b2a;border-radius:14px;padding:10px 14px;font-weight:600;font-size:14px;margin-bottom:12px}
+.auth-err.ok{background:#eaf4de;color:var(--green)}
+.auth-link{border:0;background:none;color:var(--green);font-weight:700;cursor:pointer;padding:10px 0 0;font-size:14px;width:100%}
+@media(max-width:760px){.sync .st{display:none}.sync{padding:7px 10px}}
 </style>
 </head>
 <body>
@@ -326,9 +345,16 @@ select:disabled{opacity:.6}
   <div class="top-in">
     <div class="brand"><i></i><span>Мой кабинет</span></div>
     <nav class="nav" id="nav"></nav>
+    <button class="sync" id="syncBadge" data-a="syncNow" title="Синхронизация с облаком" hidden></button>
     <button class="btn ghost sm" data-a="settings">⚙️ Данные</button>
   </div>
 </header>
+<div id="auth" class="auth">
+  <div class="auth-card">
+    <div class="auth-top"><div class="brand"><i></i><span>Мой кабинет</span></div><h1 id="authTitle">Привет!</h1><p id="authSub">Загружаю кабинет…</p></div>
+    <div class="auth-body" id="authBody"></div>
+  </div>
+</div>
 <main id="app"></main>
 <div id="modalRoot"></div>
 <div id="toast" class="toast"></div>
@@ -336,11 +362,25 @@ select:disabled{opacity:.6}
 <input type="file" id="mediaFile" accept="image/*" hidden>
 <div id="lightbox" class="lb" data-a="lbBg" hidden></div>
 
+<script src="vendor/supabase-js-2.118.0.js"></script>
 <script>
 /* =========================================================
-   ЛИЧНЫЙ КАБИНЕТ · всё хранится в localStorage этого браузера
+   ЛИЧНЫЙ КАБИНЕТ · данные хранятся в облаке Supabase,
+   а браузер держит быструю копию для работы без интернета
    ========================================================= */
-const KEY = 'da_cabinet_v1';
+const KEY = 'da_cabinet_v1'; // старое хранилище (до облака): только читается для переноса, не изменяется
+
+/* ---------- облако Supabase ----------
+   Publishable key предназначен для браузера и может быть виден всем.
+   Доступ к данным закрывают правила RLS в базе: каждый видит только свои записи.
+   Секретный ключ (secret / service_role) здесь не используется и не должен появляться. */
+const SB_URL = 'https://uhyprdnclnletepnrtla.supabase.co';
+const SB_KEY = 'sb_publishable_uSC5VrRjZdgkQl30syr0BQ_Pix3uSi1';
+const SB_TABLE = 'cabinet_items';
+const SB_BUCKET = 'media';
+const CL = {sb:null, uid:null, email:'', base:{}, since:null, urls:{}, pmedia:{}, ready:false,
+  busy:false, again:false, pulling:false, hold:0, status:'', needRender:false, pushT:null, warned:false,
+  miss:{}, pushSeq:0, seedHeld:false, leaving:false};
 
 /* ---------- справочники ---------- */
 const STATUSES = ['идея','разработка','сценарий','съёмка','монтаж','опубликовано'];
@@ -463,13 +503,14 @@ function normalize(d){
   return e;
 }
 
-let S;
-try { const raw = localStorage.getItem(KEY); S = raw ? normalize(cleanDemo(JSON.parse(raw))) : emptyState(); }
-catch(err) { S = emptyState(); }
+/* данные загружаются после входа (см. «ОБЛАКО» ниже) */
+let S = emptyState();
 
 function persist(){
-  try { localStorage.setItem(KEY, JSON.stringify(S)); }
-  catch(err) { toast('Не удалось сохранить — проверь настройки браузера'); }
+  if(!CL.uid || !CL.ready) return; // до входа ничего не записываем, старые данные браузера не трогаем
+  try { localStorage.setItem(cloudKey('state'), JSON.stringify(S)); }
+  catch(err) { if(!CL.warned){ CL.warned = true; toast('Мало места в браузере — сохраняю только в облако'); } }
+  schedulePush();
 }
 function save(){ persist(); render(); }
 
@@ -886,33 +927,33 @@ function ensurePosts(idea){
   return n;
 }
 
-/* хранилище изображений: отдельный ключ, сжатие, контроль места */
-const MKEY = 'da_cabinet_media_v1';
-const STORE_LIMIT = 4800000; // осторожная оценка ёмкости localStorage (символов)
+/* хранилище изображений: файлы лежат в приватной папке Supabase Storage,
+   MEDIA — адреса для показа (id → ссылка с ограниченным сроком или только что сжатая картинка) */
+const MKEY = 'da_cabinet_media_v1'; // старые картинки браузера: только читаются для переноса
 let MEDIA = {};
-try { MEDIA = JSON.parse(localStorage.getItem(MKEY) || '{}') || {}; } catch(err) { MEDIA = {}; }
-function persistMedia(){ try { localStorage.setItem(MKEY, JSON.stringify(MEDIA)); return true; } catch(err) { return false; } }
-function storageUsed(){
-  let n = 0;
-  try { for(let i=0;i<localStorage.length;i++){ const k = localStorage.key(i); n += k.length + (localStorage.getItem(k)||'').length; } } catch(err) {}
-  return n;
+function persistMedia(){ return true; }
+function usedMediaIds(st){ const used = new Set(); ((st||S).posts||[]).forEach(p => { if(p.cover) used.add(p.cover); (p.shots||[]).forEach(x => x && used.add(x)); }); return used; }
+function storageLine(){
+  const n = usedMediaIds().size, wait = Object.keys(CL.pmedia).length;
+  return `Изображения хранятся в облаке · ${n}${wait ? ` · ждут загрузки: ${wait}` : ''}`;
 }
-function storageLine(){ const u = storageUsed(); return `Занято хранилища браузера: ${pct(u,STORE_LIMIT)}% · изображений: ${Object.keys(MEDIA).length}`; }
 function putMedia(urls, freeIds){
-  const backup = {};
-  (freeIds||[]).forEach(id => { if(MEDIA[id]){ backup[id] = MEDIA[id]; delete MEDIA[id]; } });
-  const freed = Object.values(backup).reduce((a,u) => a+u.length, 0);
-  const add = urls.reduce((a,u) => a+u.length+24, 0);
-  if(storageUsed() - freed + add > STORE_LIMIT){ Object.assign(MEDIA, backup); return null; }
-  const ids = urls.map(u => { const id = 'm'+uid(); MEDIA[id] = u; return id; });
-  if(!persistMedia()){ ids.forEach(id => delete MEDIA[id]); Object.assign(MEDIA, backup); persistMedia(); return null; }
+  dropMedia(freeIds||[]);
+  const ids = urls.map(u => { const id = 'm'+uid(); MEDIA[id] = u; CL.pmedia[id] = u; return id; });
+  savePendingMedia();
   return ids;
 }
-function dropMedia(ids){ ids.filter(Boolean).forEach(id => delete MEDIA[id]); persistMedia(); }
+function dropMedia(ids){
+  const list = ids.filter(Boolean); if(!list.length) return;
+  const remote = list.filter(id => !CL.pmedia[id]);
+  list.forEach(id => { delete MEDIA[id]; delete CL.pmedia[id]; delete CL.urls[id]; });
+  savePendingMedia(); saveUrls();
+  if(remote.length && CL.sb && CL.uid) CL.sb.storage.from(SB_BUCKET).remove(remote.map(mediaPath)).catch(() => {});
+}
 function cleanMedia(){
-  const used = new Set(); S.posts.forEach(p => { if(p.cover) used.add(p.cover); (p.shots||[]).forEach(x => used.add(x)); });
-  let ch = false; Object.keys(MEDIA).forEach(k => { if(!used.has(k)){ delete MEDIA[k]; ch = true; } });
-  if(ch) persistMedia();
+  /* убирает из памяти ссылки на картинки, которые больше нигде не используются; файлы в облаке не трогает */
+  const used = usedMediaIds();
+  Object.keys(MEDIA).forEach(k => { if(!used.has(k) && !CL.pmedia[k]) delete MEDIA[k]; });
 }
 function compressImage(file, maxSide, quality){
   return new Promise((res, rej) => {
@@ -970,7 +1011,7 @@ function prepBlog(){
     if(!hasPost('100 Countries Before 30')) S.posts.push(newPost({title:'100 Countries Before 30', notes:'Результат не оправдал ожиданий.'}));
     S.blogSeeded = 1;
   }
-  S.posts.forEach(p => { if(p.cover && !MEDIA[p.cover]) p.cover = null; p.shots = p.shots.filter(id => MEDIA[id]); });
+  /* ссылки на картинки здесь не удаляются: файл может ещё загружаться с другого устройства */
   cleanMedia();
   UI.cmp = UI.cmp.filter(id => byId(S.posts,id));
 }
@@ -1414,11 +1455,14 @@ function collect(){
 function openSettings(){
   openModal(`<h3>Данные и настройки</h3>
     <div class="f"><span>Как тебя называть</span><input data-c="setName" value="${esc(S.name)}"></div>
-    <p class="muted sm">Всё хранится только в этом браузере на этом устройстве. Время от времени делай экспорт — это твоя резервная копия, в неё входят и изображения. Файл экспорта можно загрузить на другом устройстве через «Импорт».</p>
-    <p class="muted sm"><b>${storageLine()}</b>. Хранилище браузера небольшое (около 5 МБ): изображения сжимаются, но много скриншотов туда не поместится.</p>
+    <p class="muted sm">Записи и изображения хранятся в твоём личном облаке и синхронизируются между телефоном и компьютером. Вход: <b>${esc(CL.email)}</b>. ${syncText()}.</p>
+    <p class="muted sm">Время от времени делай экспорт — это твоя резервная копия, в неё входят и изображения. Файл экспорта можно загрузить обратно через «Импорт».</p>
+    <p class="muted sm"><b>${storageLine()}</b>.</p>
     <div class="stack">
       <button class="btn" data-a="export">⬇️ Экспорт всех данных в файл</button>
       <button class="btn ghost" data-a="import">⬆️ Импорт из файла</button>
+      ${hasLegacy() ? '<button class="btn ghost" data-a="migrate">📦 Перенести данные из этого браузера в облако</button>' : ''}
+      <button class="btn ghost" data-a="logout">Выйти из аккаунта</button>
       <button class="btn danger" data-a="wipe">Очистить всё и начать с нуля</button>
     </div>
     <div class="mfoot"><button class="btn ghost" data-a="mclose">Закрыть</button></div>`);
@@ -1584,18 +1628,36 @@ const ACT = {
   swt: (d, el) => el.classList.toggle('on'),
 
   /* данные */
-  export: () => {
-    const blob = new Blob([JSON.stringify(Object.assign({}, S, {media:MEDIA}))], {type:'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = `kabinet-${T()}.json`;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-    toast('Файл сохранён в загрузки');
+  export: async (d, el) => {
+    if(el) el.disabled = true;
+    toast('Готовлю резервную копию…');
+    try {
+      const {media, missing} = await collectMedia(S);
+      downloadJson(Object.assign({}, S, {media}), `kabinet-${T()}.json`);
+      if(missing) alert(`Файл сохранён, но ${missing} ${plural(missing,'изображение','изображения','изображений')} не удалось скачать из облака (нет связи?). Записи сохранены полностью.`);
+      else toast('Файл сохранён в загрузки');
+    } finally { if(el) el.disabled = false; }
   },
   import: () => document.getElementById('importFile').click(),
-  wipe: () => { if(!confirm('Удалить ВСЕ данные? Это нельзя отменить. Сначала лучше сделать экспорт.')) return;
-    const n = S.name; S = emptyState(); S.name = n; S.habitsSeeded = 1; S.blogSeeded = 1; S.postsMigrated = 1; MEDIA = {}; persistMedia(); UI.cmp = [];
-    closeModal(); save(); toast('Кабинет очищен'); }
+  wipe: async () => { if(!confirm('Удалить ВСЕ данные из облака? Это нельзя отменить. Сначала лучше сделать экспорт.')) return;
+    const n = S.name; S = emptyState(); S.name = n; S.habitsSeeded = 1; S.blogSeeded = 1; S.postsMigrated = 1; MEDIA = {}; CL.pmedia = {}; CL.urls = {}; savePendingMedia(); saveUrls(); UI.cmp = [];
+    closeModal(); save(); toast('Кабинет очищен');
+    await removeAllCloudMedia(); },
+  syncNow: () => { if(CL.status==='err' || CL.status==='off') toast('Пробую связаться с облаком…'); cloudSync(); },
+  migrate: () => { const L = legacyInfo(); if(L) openMigrate(L, true); else toast('В этом браузере нет старых записей'); },
+  migGo: async (d, el) => { el.disabled = true; await runMigration(MIG.L, MIG.mode); },
+  migSkip: () => { closeModal(); startSeeding(); },
+  migCloud: () => { if(!confirm('Оставить только данные из облака? Записи этого браузера не попадут в облако, но останутся в браузере и в файле копии.')) return;
+    markMigrated(); closeModal(); startSeeding(); toast('Готово: используются данные из облака'); },
+  migFree: () => { if(!confirm('Удалить старую копию кабинета из памяти этого браузера? Все записи уже в облаке, а резервная копия скачана файлом.')) return;
+    try { localStorage.removeItem(KEY); localStorage.removeItem(MKEY); } catch(err) {}
+    closeModal(); toast('Место в браузере освобождено'); },
+  logout: async (d, el) => {
+    el.disabled = true;
+    await cloudPush();
+    if(pendingCount() && !confirm('Часть изменений ещё не сохранена в облаке (нет связи). Если выйти сейчас, они пропадут. Выйти всё равно?')){ el.disabled = false; return; }
+    await cloudLogout();
+  }
 };
 
 /* ---------- изменения в полях ---------- */
@@ -1632,7 +1694,7 @@ document.addEventListener('keydown', e => {
 }));
 document.getElementById('mediaFile').addEventListener('change', e => {
   const files = [...e.target.files].filter(f => /^image\//.test(f.type)); e.target.value = '';
-  if(files.length) handleImages(files); else UPLOAD = null;
+  if(files.length){ CL.hold++; handleImages(files).finally(() => { CL.hold--; schedulePush(); }); } else UPLOAD = null;
 });
 document.getElementById('importFile').addEventListener('change', e => {
   const file = e.target.files[0]; if(!file) return;
@@ -1642,15 +1704,491 @@ document.getElementById('importFile').addEventListener('change', e => {
       const d = JSON.parse(r.result);
       if(!d || typeof d!=='object' || Array.isArray(d)) throw new Error('bad');
       if(!confirm('Заменить текущие данные данными из файла?')) return;
-      const media = d.media && typeof d.media==='object' && !Array.isArray(d.media) ? d.media : null; delete d.media;
-      const prevMedia = MEDIA;
-      if(media){ MEDIA = media; if(!persistMedia()){ MEDIA = prevMedia; persistMedia(); alert('Изображения из файла не поместились в хранилище браузера — записи загружены без них.'); } }
-      S = normalize(cleanDemo(d)); prepHabits(); prepBlog(); closeModal(); save(); toast('Данные загружены ✨');
+      const media = d.media && typeof d.media==='object' && !Array.isArray(d.media) ? d.media : {}; delete d.media;
+      const before = usedMediaIds();
+      const next = normalize(cleanDemo(d));
+      adoptMedia(next, media);
+      dropMedia([...before].filter(id => !usedMediaIds(next).has(id)));
+      S = next; prepHabits(); prepBlog(); closeModal(); save(); toast('Данные загружены ✨ Сохраняю в облако…');
     } catch(err) { alert('Не получилось прочитать файл. Нужен файл экспорта из кабинета (.json).'); }
     finally { e.target.value = ''; }
   };
   r.readAsText(file);
 });
+
+/* =========================================================
+   ОБЛАКО · вход, синхронизация, изображения, перенос
+   Каждая запись кабинета хранится отдельной строкой таблицы cabinet_items:
+   kind — раздел (tasks, habits, journal…), item_id — id записи, data — сама запись.
+   ========================================================= */
+const ARR_KINDS = ['habits','tasks','focus','ideas','refs','journal','courses','books','goals','posts'];
+const MAP_KINDS = [['habitLog','habit_log'],['days','days'],['weekly','weekly']];
+const SET_KEYS = ['v','clean','habitsSeeded','name','timer','timerCfg','blogSeeded','postsMigrated'];
+const DEL = '-';
+const RECOVERY = /type=recovery/.test(location.hash);
+const $id = id => document.getElementById(id);
+const cloudKey = k => 'da_cloud_'+CL.uid+'_'+k;
+const mediaPath = id => CL.uid+'/'+id;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const isModalOpen = () => !!$id('modalRoot').innerHTML;
+/* идёт ввод: в поле с фокусом уже есть текст — такой экран не перерисовываем, чтобы не потерять набранное */
+const isTyping = () => { const a = document.activeElement; return !!(a && /INPUT|TEXTAREA/.test(a.tagName) && !a.closest('#auth') && String(a.value||'').trim()); };
+const isNetErr = e => !navigator.onLine || !!(e && (e.name==='TypeError' || /fetch|network|load failed|timeout/i.test(String(e.message||e))));
+
+/* ---------- сравнение записей: одинаковый отпечаток = одинаковое содержимое ---------- */
+function canon(v){
+  if(Array.isArray(v)) return '['+v.map(x => x===undefined || typeof x==='function' ? 'null' : canon(x)).join(',')+']';
+  if(v && typeof v==='object') return '{'+Object.keys(v).filter(k => v[k]!==undefined && typeof v[k]!=='function').sort().map(k => JSON.stringify(k)+':'+canon(v[k])).join(',')+'}';
+  const j = JSON.stringify(v); return j===undefined ? 'null' : j;
+}
+function hashOf(v){
+  const s = canon(v); let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for(let i=0;i<s.length;i++){ const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1>>>16), 2246822507) ^ Math.imul(h2 ^ (h2>>>13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2>>>16), 2246822507) ^ Math.imul(h1 ^ (h1>>>13), 3266489909);
+  return (h2>>>0).toString(36)+(h1>>>0).toString(36)+':'+s.length;
+}
+
+/* ---------- кабинет ⇄ строки таблицы ---------- */
+function ensureIds(st){
+  ARR_KINDS.forEach(k => { const seen = new Set();
+    (st[k]||[]).forEach(x => { if(!x || typeof x!=='object') return;
+      let id = x.id==null ? '' : String(x.id);
+      if(!id || id.length>80 || seen.has(id)){ x.id = uid(); id = x.id; }
+      seen.add(id); }); });
+}
+function cloudItems(st){
+  const out = {}, put = (kind, id, data) => { out[kind+'|'+id] = {kind, id, data}; };
+  const set = {}; SET_KEYS.forEach(k => { if(st[k]!==undefined) set[k] = st[k]; }); put('settings','main',set);
+  ARR_KINDS.forEach(k => { const ids = [];
+    (st[k]||[]).forEach(x => { if(x && typeof x==='object' && x.id!=null){ const id = String(x.id); put(k,id,x); ids.push(id); } });
+    put('order', k, {ids}); });
+  MAP_KINDS.forEach(([k,kind]) => Object.keys(st[k]||{}).forEach(key => { const v = st[k][key]; if(v!=null && key.length<=80) put(kind, key, {v}); }));
+  return out;
+}
+function cloudState(items){
+  const st = emptyState(), all = Object.values(items), set = items['settings|main'];
+  if(set && set.data) SET_KEYS.forEach(k => { if(set.data[k]!==undefined) st[k] = set.data[k]; });
+  ARR_KINDS.forEach(k => {
+    const ord = (((items['order|'+k]||{}).data||{}).ids) || [], pos = new Map(ord.map((id,i) => [String(id),i]));
+    st[k] = all.filter(x => x.kind===k).map((x,i) => [pos.has(x.id) ? pos.get(x.id) : ord.length+i, x.data]).sort((a,b) => a[0]-b[0]).map(x => x[1]);
+  });
+  MAP_KINDS.forEach(([k,kind]) => { st[k] = {}; all.filter(x => x.kind===kind && x.data && x.data.v!=null).forEach(x => { st[k][x.id] = x.data.v; }); });
+  return normalize(st);
+}
+const emptyDay = x => !x || (!x.main && !x.mainDone && !x.rDone && !x.rMove && !x.energy && !x.mood);
+/* сколько настоящих записей (пустые дни, которые создаёт главная страница, не считаются) */
+function countRecords(st){ return ARR_KINDS.reduce((a,k) => a+(st[k]||[]).length, 0) + MAP_KINDS.reduce((a,[k]) => a+Object.values(st[k]||{}).filter(v => k!=='days' || !emptyDay(v)).length, 0); }
+/* лёгкая проверка формата после загрузки из облака (без стартовых примеров) */
+function prepLight(){
+  S.habits.forEach(fixHabit);
+  S.posts = S.posts.map(p => newPost(p));
+  S.posts.forEach(p => { p.shots = (p.shots||[]).filter(Boolean); p.snaps = Array.isArray(p.snaps) ? p.snaps : []; });
+  UI.cmp = UI.cmp.filter(id => byId(S.posts,id));
+}
+
+/* ---------- копия в браузере ---------- */
+function lsGet(k, def){ try { const r = localStorage.getItem(cloudKey(k)); return r ? JSON.parse(r) : def; } catch(err) { return def; } }
+function lsSet(k, v){ try { localStorage.setItem(cloudKey(k), JSON.stringify(v)); return true; } catch(err) { return false; } }
+function saveBase(){ if(CL.uid) lsSet('base', {base:CL.base, since:CL.since}); }
+function saveUrls(){ if(CL.uid) lsSet('urls', CL.urls); }
+function savePendingMedia(){ if(CL.uid) lsSet('pmedia', CL.pmedia); }
+function saveLocalCopy(){ if(CL.uid) lsSet('state', S); }
+function clearUserCache(){ ['state','base','urls','pmedia'].forEach(k => { try { localStorage.removeItem(cloudKey(k)); } catch(err) {} }); }
+
+/* ---------- статус в шапке ---------- */
+const SYNC_UI = {ok:['☁️','Сохранено','Всё сохранено в облаке'], sync:['⏳','Сохраняю…','Идёт сохранение в облако'], wait:['⏳','Сохраняю…','Есть изменения, сейчас отправлю в облако'],
+  off:['📴','Нет связи','Нет связи с облаком. Изменения сохранены в этом браузере и отправятся, когда появится интернет'],
+  err:['⚠️','Не сохранено','Не получилось сохранить в облако. Нажми на значок, чтобы повторить']};
+function setStatus(st){
+  CL.status = st; const el = $id('syncBadge'), u = SYNC_UI[st] || SYNC_UI.ok;
+  el.hidden = !CL.ready;
+  el.className = 'sync '+(st==='ok' ? 'ok' : st==='off' || st==='err' ? 'err' : '');
+  el.innerHTML = `<span>${u[0]}</span><span class="st">${u[1]}</span>`;
+  el.title = u[2];
+}
+function syncText(){ return (SYNC_UI[CL.status] || SYNC_UI.ok)[2]; }
+
+/* ---------- отправка изменений ---------- */
+function schedulePush(ms){
+  if(!CL.uid || !CL.ready) return;
+  clearTimeout(CL.pushT);
+  if(CL.status!=='off' && CL.status!=='err') setStatus('wait');
+  CL.pushT = setTimeout(cloudPush, ms==null ? 1200 : ms);
+}
+function pendingCount(){
+  if(!CL.uid) return 0;
+  ensureIds(S);
+  const items = cloudItems(S); let n = Object.keys(CL.pmedia).length;
+  for(const key in items) if(CL.base[key]!==hashOf(items[key].data)) n++;
+  for(const key in CL.base) if(!items[key] && CL.base[key]!==DEL) n++;
+  return n;
+}
+async function cloudPush(){
+  if(!CL.uid || !CL.ready) return false;
+  if(CL.busy || CL.pulling){ CL.again = true; return false; }
+  CL.busy = true; clearTimeout(CL.pushT);
+  let ok = true;
+  try {
+    setStatus('sync');
+    const failed = await uploadPendingMedia();
+    ensureIds(S);
+    const items = cloudItems(S), rows = [], hs = [];
+    for(const key in items){ const it = items[key], h = hashOf(it.data);
+      if(CL.base[key]!==h){ rows.push({user_id:CL.uid, kind:it.kind, item_id:it.id, data:JSON.parse(JSON.stringify(it.data)), deleted:false}); hs.push([key,h]); } }
+    for(const key in CL.base){ if(!items[key] && CL.base[key]!==DEL){ const i = key.indexOf('|');
+      rows.push({user_id:CL.uid, kind:key.slice(0,i), item_id:key.slice(i+1), data:{}, deleted:true}); hs.push([key,DEL]); } }
+    for(let i=0;i<rows.length;i+=200){
+      const {error} = await CL.sb.from(SB_TABLE).upsert(rows.slice(i,i+200), {onConflict:'user_id,kind,item_id'});
+      if(error) throw error;
+      hs.slice(i,i+200).forEach(([k,h]) => { CL.base[k] = h; });
+      CL.pushSeq++; saveBase();
+    }
+    if(failed){ ok = false; setStatus('err'); } else setStatus('ok');
+  } catch(err) { ok = false; console.warn('cloud push', err); setStatus(isNetErr(err) ? 'off' : 'err'); }
+  finally {
+    CL.busy = false;
+    if(CL.again){ CL.again = false; schedulePush(300); }
+    else if(!ok){ clearTimeout(CL.pushT); CL.pushT = setTimeout(cloudPush, 20000); }
+  }
+  return ok;
+}
+/* отправляет всё, что накопилось; true — если в облаке всё сохранено */
+async function flushAll(){
+  for(let i=0;i<10;i++){
+    if(CL.busy || CL.pulling){ await sleep(400); continue; }
+    await cloudPush();
+    if(!pendingCount()) return true;
+    if(CL.status==='off' || CL.status==='err') return false;
+  }
+  return !pendingCount();
+}
+
+/* ---------- получение изменений ---------- */
+async function cloudPull(fresh){
+  if(!CL.uid || CL.pulling || CL.busy) return false;
+  CL.pulling = true;
+  try {
+    const seq = CL.pushSeq, rows = [];
+    const since = !fresh && CL.since ? new Date(new Date(CL.since).getTime()-15000).toISOString() : null;
+    for(let from=0;;from+=1000){
+      let q = CL.sb.from(SB_TABLE).select('kind,item_id,data,deleted,updated_at')
+        .order('updated_at',{ascending:true}).order('kind').order('item_id').range(from, from+999);
+      q = since ? q.gt('updated_at', since) : q.eq('deleted', false);
+      const {data, error} = await q; if(error) throw error;
+      rows.push(...data); if(data.length<1000) break;
+    }
+    /* пока открыто окно, идёт ввод или отправка — не подменяем данные, заберём их в следующий раз */
+    if(CL.busy || seq!==CL.pushSeq || CL.hold || (CL.ready && (isModalOpen() || isTyping()))) return false;
+    if(fresh){ CL.base = {}; CL.since = null; }
+    ensureIds(S);
+    const local = fresh ? {} : cloudItems(S);
+    let changed = fresh, mx = CL.since;
+    rows.forEach(r => {
+      const key = r.kind+'|'+r.item_id, rh = r.deleted ? DEL : hashOf(r.data);
+      const lh = local[key] ? hashOf(local[key].data) : DEL, bh = CL.base[key]==null ? DEL : CL.base[key];
+      if(lh===bh && lh!==rh){ if(r.deleted) delete local[key]; else local[key] = {kind:r.kind, id:r.item_id, data:r.data}; changed = true; }
+      CL.base[key] = rh;
+      if(!mx || r.updated_at>mx) mx = r.updated_at;
+    });
+    CL.since = mx; saveBase();
+    if(changed){
+      S = cloudState(local); prepLight();
+      if(CL.ready){ saveLocalCopy(); requestRender(); }
+    }
+    if(CL.status==='off' || (CL.status==='err' && !pendingCount())) setStatus('ok');
+    return true;
+  } catch(err) { console.warn('cloud pull', err); if(CL.ready) setStatus(isNetErr(err) ? 'off' : 'err'); return false; }
+  finally { CL.pulling = false; }
+}
+function requestRender(){ if(isModalOpen() || isTyping()){ CL.needRender = true; return; } CL.needRender = false; render(); }
+
+async function cloudSync(){
+  if(!CL.uid || !CL.ready) return;
+  await cloudPush();
+  if(CL.status==='off') return;
+  await cloudPull(false);
+  await resolveUrls();
+}
+
+/* ---------- изображения в облаке ---------- */
+function dataUrlToBlob(u){
+  const m = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(u||''); if(!m) throw new Error('bad image');
+  const type = m[1] || 'application/octet-stream';
+  if(!m[2]) return new Blob([decodeURIComponent(m[3])], {type});
+  const bin = atob(m[3]), a = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) a[i] = bin.charCodeAt(i);
+  return new Blob([a], {type});
+}
+function blobToDataUrl(b){ return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); }); }
+async function uploadPendingMedia(){
+  let failed = 0;
+  for(const id of Object.keys(CL.pmedia)){
+    const src = CL.pmedia[id]; if(!src){ delete CL.pmedia[id]; continue; }
+    try {
+      let blob = dataUrlToBlob(src);
+      if(!/^image\/(webp|jpeg|png)$/.test(blob.type)) blob = dataUrlToBlob(await compressImage(blob, 1400, 0.8));
+      const {error} = await CL.sb.storage.from(SB_BUCKET).upload(mediaPath(id), blob, {contentType:blob.type, upsert:true, cacheControl:'31536000'});
+      if(error) throw error;
+      if(CL.pmedia[id]===src) delete CL.pmedia[id];
+      savePendingMedia();
+    } catch(err) { failed++; if(isNetErr(err)) throw err; console.warn('media upload', id, err); }
+  }
+  return failed;
+}
+async function resolveUrls(){
+  if(!CL.uid || !CL.sb) return;
+  const now = Date.now(), need = []; let ch = false;
+  usedMediaIds().forEach(id => {
+    const c = CL.urls[id];
+    if(CL.pmedia[id]){ if(MEDIA[id]!==CL.pmedia[id]){ MEDIA[id] = CL.pmedia[id]; ch = true; } return; }
+    if(MEDIA[id] && MEDIA[id].startsWith('data:')) return;
+    if(c && c.exp>now+3600e3){ if(MEDIA[id]!==c.u){ MEDIA[id] = c.u; ch = true; } return; }
+    if(CL.miss[id] && CL.miss[id]>now) return;
+    need.push(id);
+  });
+  try {
+    for(let i=0;i<need.length;i+=100){
+      const chunk = need.slice(i,i+100);
+      const {data, error} = await CL.sb.storage.from(SB_BUCKET).createSignedUrls(chunk.map(mediaPath), 604800);
+      if(error) throw error;
+      (data||[]).forEach((r,j) => { const id = r.path ? r.path.split('/').pop() : chunk[j];
+        if(r.signedUrl && !r.error){ CL.urls[id] = {u:r.signedUrl, exp:now+604800e3}; MEDIA[id] = r.signedUrl; ch = true; }
+        else CL.miss[id] = now+60e3; });
+    }
+  } catch(err) { console.warn('media urls', err); }
+  if(ch){ saveUrls(); requestRender(); }
+}
+/* картинки для резервной копии: из памяти или скачиваются из облака */
+async function collectMedia(st){
+  const media = {}; let missing = 0;
+  for(const id of usedMediaIds(st)){
+    const src = CL.pmedia[id] || (MEDIA[id] && MEDIA[id].startsWith('data:') ? MEDIA[id] : null);
+    if(src){ media[id] = src; continue; }
+    try { const {data, error} = await CL.sb.storage.from(SB_BUCKET).download(mediaPath(id)); if(error) throw error; media[id] = await blobToDataUrl(data); }
+    catch(err) { missing++; }
+  }
+  return {media, missing};
+}
+/* картинки из файла копии или из старого хранилища браузера → очередь загрузки в облако */
+function adoptMedia(st, media){
+  const ok = id => typeof media[id]==='string' && /^data:image\//.test(media[id]);
+  (st.posts||[]).forEach(p => { if(p.cover && !ok(p.cover)) p.cover = null; p.shots = (p.shots||[]).filter(ok); });
+  usedMediaIds(st).forEach(id => { MEDIA[id] = media[id]; CL.pmedia[id] = media[id]; delete CL.urls[id]; });
+  savePendingMedia();
+}
+async function removeAllCloudMedia(){
+  try {
+    for(let i=0;i<50;i++){
+      const {data, error} = await CL.sb.storage.from(SB_BUCKET).list(CL.uid, {limit:100});
+      if(error || !data || !data.length) break;
+      const paths = data.filter(f => f.name && !CL.pmedia[f.name]).map(f => CL.uid+'/'+f.name);
+      if(!paths.length) break;
+      const r = await CL.sb.storage.from(SB_BUCKET).remove(paths); if(r.error) break;
+    }
+  } catch(err) {}
+}
+function downloadJson(obj, name){
+  const blob = new Blob([JSON.stringify(obj)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+
+/* ---------- перенос из старого хранилища браузера ---------- */
+function hasLegacy(){ try { return !!localStorage.getItem(KEY); } catch(err) { return false; } }
+function legacyInfo(){
+  try {
+    const raw = localStorage.getItem(KEY); if(!raw) return null;
+    const st = normalize(cleanDemo(JSON.parse(raw)));
+    let media = {}; try { media = JSON.parse(localStorage.getItem(MKEY) || '{}') || {}; } catch(err) {}
+    const n = countRecords(st); if(!n) return null;
+    return {S:st, media, n, imgs:[...usedMediaIds(st)].filter(id => typeof media[id]==='string').length};
+  } catch(err) { return null; }
+}
+function markMigrated(){ try { localStorage.setItem(cloudKey('migrated'), String(Date.now())); } catch(err) {} }
+function startSeeding(){ if(!CL.seedHeld) return; CL.seedHeld = false; prepHabits(); prepBlog(); save(); }
+/* объединение: записи с одинаковым id не задваиваются, при совпадении остаётся версия из облака */
+function mergeStates(cur, old){
+  const a = cloudItems(cur), b = cloudItems(old), low = t => String(t||'').trim().toLowerCase();
+  const byName = new Map(cur.habits.map(h => [low(h.name), String(h.id)])), remap = {};
+  old.habits.forEach(h => { const id = byName.get(low(h.name)); if(id && id!==String(h.id)) remap[h.id] = id; });
+  const SEED = ['always behind','copying success','the $35 apartment','100 countries before 30'];
+  Object.values(b).forEach(it => {
+    const key = it.kind+'|'+it.id;
+    if(it.kind==='settings') return;
+    if(it.kind==='habits' && remap[it.id]) return;
+    if((it.kind==='ideas' || it.kind==='posts') && SEED.includes(low(it.data.title)) && cur[it.kind].some(x => low(x.title)===low(it.data.title))) return;
+    if(it.kind==='habit_log'){ const ex = a[key], ids = (it.data.v||[]).map(id => remap[id] || id);
+      a[key] = {kind:it.kind, id:it.id, data:{v:[...new Set([...(ex ? ex.data.v : []), ...ids])]}}; return; }
+    if(it.kind==='order'){ const ex = a[key], ids = (ex ? ex.data.ids : []).slice();
+      it.data.ids.forEach(id => { if(!ids.includes(id)) ids.push(id); }); a[key] = {kind:'order', id:it.id, data:{ids}}; return; }
+    if(!a[key] || (it.kind==='days' && emptyDay(a[key].data.v))) a[key] = it;
+  });
+  return cloudState(a);
+}
+let MIG = null;
+function openMigrate(L){
+  const cloudN = countRecords(S), mode = cloudN ? 'merge' : 'move';
+  MIG = {L, mode};
+  openModal(`<h3>📦 Перенос в облако</h3>
+    <p>В этом браузере есть записи кабинета, сохранённые до подключения облака: <b>${L.n}</b> ${plural(L.n,'запись','записи','записей')}${L.imgs ? ` и <b>${L.imgs}</b> ${plural(L.imgs,'изображение','изображения','изображений')}` : ''}.</p>
+    ${mode==='move' ? '<p>Облако пока пустое — перенесу всё туда, и записи появятся на всех твоих устройствах.</p>'
+      : `<p>В облаке уже есть записи (${cloudN}). Можно добавить к ним записи из этого браузера: одинаковые записи не задвоятся, а при совпадении останется версия из облака.</p>
+         <p class="muted sm">Если это те же данные, которые ты уже перенесла с другого устройства, выбери «Оставить облако».</p>`}
+    <div class="note">Сначала скачается файл с резервной копией этих записей. Из браузера ничего не удаляется.</div>
+    <div class="mfoot">
+      ${mode==='merge' ? '<button class="btn ghost" data-a="migCloud">Оставить облако</button>' : ''}
+      <button class="btn ghost" data-a="migSkip">Не сейчас</button>
+      <button class="btn" data-a="migGo">${mode==='move' ? 'Скачать копию и перенести' : 'Скачать копию и добавить'}</button>
+    </div>`);
+}
+async function runMigration(L, mode){
+  downloadJson(Object.assign({}, L.S, {media:L.media}), `kabinet-iz-brauzera-${T()}.json`);
+  const old = JSON.parse(JSON.stringify(L.S)); ensureIds(old);
+  adoptMedia(old, L.media);
+  S = mode==='move' ? old : mergeStates(S, old);
+  CL.seedHeld = false; prepHabits(); prepBlog();
+  saveLocalCopy(); render();
+  openModal('<h3>Переношу…</h3><p>Отправляю записи и изображения в облако. Не закрывай страницу.</p>');
+  const done = await flushAll();
+  markMigrated(); render();
+  openModal(done
+    ? `<h3>✨ Готово</h3><p>Все записи${L.imgs ? ' и изображения' : ''} перенесены в облако и теперь доступны на всех устройствах после входа.</p>
+       <p class="muted sm">Резервная копия скачана файлом. Старая копия всё ещё лежит в памяти этого браузера — её можно удалить, чтобы освободить место, или оставить.</p>
+       <div class="mfoot"><button class="btn ghost" data-a="migFree">Удалить старую копию из браузера</button><button class="btn" data-a="mclose">Готово</button></div>`
+    : `<h3>Почти готово</h3><p>Записи сохранены в этом браузере, но часть ещё не отправилась в облако (нет связи). Кабинет отправит их сам, когда появится интернет — значок в шапке станет «☁️ Сохранено».</p>
+       <p class="muted sm">Резервная копия скачана файлом, старые данные в браузере не тронуты.</p>
+       <div class="mfoot"><button class="btn" data-a="mclose">Понятно</button></div>`);
+}
+
+/* ---------- вход ---------- */
+function authShow(title, sub, body){ $id('auth').hidden = false; $id('authTitle').textContent = title; $id('authSub').textContent = sub; $id('authBody').innerHTML = body; }
+function authHide(){ $id('auth').hidden = true; $id('authBody').innerHTML = ''; }
+function authErrText(e){
+  const m = String((e && e.message) || e || '');
+  if(/invalid login credentials/i.test(m)) return 'Неверный email или пароль';
+  if(/email not confirmed/i.test(m)) return 'Email не подтверждён. Подтверди пользователя в Supabase: Authentication → Users.';
+  if(/rate limit|too many/i.test(m)) return 'Слишком много попыток. Подожди немного и попробуй снова.';
+  if(/password/i.test(m) && /least|short|weak/i.test(m)) return 'Пароль слишком простой или короткий';
+  if(isNetErr(e)) return 'Нет связи с интернетом';
+  return 'Не получилось: '+m;
+}
+function authMsg(msg, ok){ return msg ? `<div class="auth-err ${ok?'ok':''}">${esc(msg)}</div>` : ''; }
+function authLogin(msg, ok){
+  let last = ''; try { last = localStorage.getItem('da_cloud_last_email') || ''; } catch(err) {}
+  authShow('Привет!', 'Войди, чтобы открыть кабинет', `${authMsg(msg, ok)}
+    <form id="authForm" class="stack" style="margin-top:0" novalidate>
+      <label class="f"><span>Email</span><input name="email" type="email" autocomplete="username" inputmode="email" required value="${esc(last)}"></label>
+      <label class="f"><span>Пароль</span><input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="btn" type="submit">Войти</button>
+    </form>
+    <button class="auth-link" type="button" id="authForgot">Забыла пароль?</button>`);
+  const f = $id('authForm');
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const email = f.email.value.trim(), password = f.password.value;
+    if(!email || !password){ authLogin('Впиши email и пароль'); return; }
+    const btn = f.querySelector('button'); btn.disabled = true; btn.textContent = 'Вхожу…';
+    try {
+      const {data, error} = await CL.sb.auth.signInWithPassword({email, password});
+      if(error) throw error;
+      startCloud(data.user);
+    } catch(err) { authLogin(authErrText(err)); }
+  };
+  $id('authForgot').onclick = async () => {
+    const email = f.email.value.trim();
+    if(!email){ authLogin('Впиши email — пришлю на него ссылку для нового пароля'); return; }
+    try {
+      const {error} = await CL.sb.auth.resetPasswordForEmail(email, {redirectTo: location.origin + location.pathname});
+      if(error) throw error;
+      authLogin('Если такой аккаунт есть, письмо со ссылкой уже в пути. Проверь почту и папку «Спам».', true);
+    } catch(err) { authLogin(authErrText(err)); }
+  };
+  if(!('ontouchstart' in window)) (last ? f.password : f.email).focus();
+}
+function authNewPassword(msg){
+  authShow('Новый пароль', 'Придумай новый пароль для входа', `${authMsg(msg)}
+    <form id="authForm" class="stack" style="margin-top:0">
+      <label class="f"><span>Новый пароль (минимум 8 символов)</span><input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="btn" type="submit">Сохранить пароль</button>
+    </form>`);
+  const f = $id('authForm');
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const password = f.password.value;
+    if(password.length<8){ authNewPassword('Нужно минимум 8 символов'); return; }
+    const btn = f.querySelector('button'); btn.disabled = true;
+    try {
+      const {data, error} = await CL.sb.auth.updateUser({password});
+      if(error) throw error;
+      if(CL.ready) authHide(); else startCloud(data.user);
+      toast('Пароль обновлён');
+    } catch(err) { authNewPassword(authErrText(err)); }
+  };
+}
+async function cloudLogout(){
+  CL.leaving = true;
+  try { await CL.sb.auth.signOut(); } catch(err) {}
+  clearUserCache();
+  location.replace(location.pathname);
+}
+
+/* ---------- запуск ---------- */
+async function startCloud(user){
+  if(CL.uid){ authHide(); return; }
+  CL.uid = user.id; CL.email = user.email || '';
+  try { localStorage.setItem('da_cloud_last_email', CL.email); } catch(err) {}
+  const cached = lsGet('state', null), b = lsGet('base', null);
+  CL.urls = lsGet('urls', {}) || {}; CL.pmedia = lsGet('pmedia', {}) || {};
+  const now = Date.now();
+  Object.entries(CL.urls).forEach(([id,c]) => { if(c && c.exp>now) MEDIA[id] = c.u; });
+  Object.keys(CL.pmedia).forEach(id => { MEDIA[id] = CL.pmedia[id]; });
+  if(cached && b){
+    /* на этом устройстве уже есть копия: открываем сразу, свежие данные подтянутся следом */
+    CL.base = b.base || {}; CL.since = b.since || null; S = normalize(cached);
+    beginApp(); cloudSync(); return;
+  }
+  authShow('Минутку…', 'Загружаю данные из облака', '<p class="muted" style="margin:0">Это нужно только при первом входе на этом устройстве.</p>');
+  if(!await cloudPull(true)){
+    authShow('Нет связи', 'Не получилось загрузить данные из облака', '<p class="muted">Проверь интернет и попробуй ещё раз.</p><button class="btn" id="authRetry">Попробовать снова</button>');
+    $id('authRetry').onclick = () => { CL.uid = null; startCloud(user); };
+    return;
+  }
+  await resolveUrls();
+  beginApp();
+}
+function beginApp(){
+  CL.ready = true; authHide();
+  let L = null; try { if(!localStorage.getItem(cloudKey('migrated'))) L = legacyInfo(); } catch(err) {}
+  if(L){ CL.seedHeld = true; prepLight(); } else { prepHabits(); prepBlog(); }
+  setStatus(CL.status || 'ok');
+  persist(); render();
+  if(L) openMigrate(L);
+}
+async function boot(){
+  if(!window.supabase || !window.supabase.createClient){
+    authShow('Нет связи', 'Не удалось загрузить модуль входа', '<p class="muted">Проверь интернет и обнови страницу.</p><button class="btn" onclick="location.reload()">Обновить</button>');
+    return;
+  }
+  CL.sb = window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true, storageKey:'da_cloud_auth'}});
+  CL.sb.auth.onAuthStateChange((ev) => setTimeout(() => {
+    if(ev==='PASSWORD_RECOVERY') authNewPassword();
+    else if(ev==='SIGNED_OUT' && CL.uid && !CL.leaving) location.reload();
+  }, 0));
+  let session = null;
+  try { const r = await CL.sb.auth.getSession(); session = r.data && r.data.session; } catch(err) {}
+  if(/access_token|refresh_token|type=|error_description/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search + '#' + view);
+  if(RECOVERY && session){ authNewPassword(); return; }
+  if(session) startCloud(session.user); else authLogin();
+}
+
+/* фоновая синхронизация: раз в 30 секунд, при возвращении во вкладку и при появлении интернета */
+setInterval(() => { if(CL.ready && document.visibilityState==='visible') cloudSync(); }, 30000);
+document.addEventListener('visibilitychange', () => { if(!CL.ready) return; if(document.visibilityState==='visible') cloudSync(); else cloudPush(); });
+window.addEventListener('online', () => cloudSync());
+setInterval(() => { if(CL.needRender && !isModalOpen() && !isTyping()){ CL.needRender = false; render(); } }, 1500);
 
 /* =========================================================
    НАВИГАЦИЯ И ОТРИСОВКА
@@ -1682,10 +2220,7 @@ setInterval(() => {
 }, 60000);
 
 function prepHabits(){ S.habits.forEach(fixHabit); seedHabits(); }
-prepHabits();
-prepBlog();
-persist();
-render();
+boot();
 </script>
 </body>
 </html>
