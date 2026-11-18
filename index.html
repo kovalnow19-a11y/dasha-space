@@ -320,6 +320,43 @@ select:disabled{opacity:.6}
   .tabs .tab{padding:8px 14px}
 }
 
+/* ---------- путешествия ---------- */
+.tbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.tbar .tabs{margin:0}
+.trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
+.trip{background:#fff;border-radius:var(--r);box-shadow:var(--shadow);cursor:pointer;overflow:hidden;transition:.15s;display:flex;flex-direction:column;min-width:0}
+.trip:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(31,58,18,.12)}
+.trip-band{height:10px;background:linear-gradient(90deg,var(--lime),var(--lilac))}
+.trip.done .trip-band{background:#dfe4d9}
+.trip-in{padding:16px 20px 20px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.trip-t{font-size:20px;font-weight:800;letter-spacing:-.025em;color:var(--green);line-height:1.2;word-break:break-word}
+.trip-m{font-size:14px;font-weight:600;word-break:break-word}
+.trip-m.muted{font-weight:500}
+.tst{display:inline-block;font-size:11.5px;font-weight:800;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.tst.plan{background:#eef1ea;color:var(--green)}
+.tst.soon{background:#f3e3f6;color:#7d3a8a}
+.tst.now{background:var(--lime);color:var(--green)}
+.tst.done{background:#eceee9;color:var(--muted)}
+.trip-nav{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:10px 0 0}
+.days{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px;align-items:start}
+.day-sub{font-size:13px;font-weight:700;color:var(--muted)}
+.stop{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.stop-time{flex:none;width:52px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums;padding-top:1px}
+.stop-time.none{color:#cbd3c3}
+.stop-b{flex:1;min-width:0;cursor:pointer}
+.stop-b b{display:block;word-break:break-word;line-height:1.3}
+.stop-d{margin:4px 0 0;color:var(--muted);font-size:14px;white-space:pre-wrap;word-break:break-word}
+.stop-map{display:inline-block;margin-top:6px;font-size:13px;white-space:nowrap}
+.stop-act{display:flex;gap:4px;flex:none}
+.stop-act .ic{width:28px;height:28px;font-size:13px}
+@media(max-width:760px){
+  .trips,.days{grid-template-columns:minmax(0,1fr);gap:14px}
+  .tbar{gap:8px}
+  .tbar .btn{width:100%}
+  .stop{gap:10px}
+  .stop-time{width:44px;font-size:14px}
+}
+
 /* ---------- облако: вход и статус синхронизации ---------- */
 .sync{border:0;background:#fff;border-radius:999px;padding:7px 12px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;box-shadow:var(--shadow);display:flex;gap:6px;align-items:center}
 .sync[hidden]{display:none}
@@ -338,6 +375,9 @@ select:disabled{opacity:.6}
 .auth-err.ok{background:#eaf4de;color:var(--green)}
 .auth-link{border:0;background:none;color:var(--green);font-weight:700;cursor:pointer;padding:10px 0 0;font-size:14px;width:100%}
 @media(max-width:760px){.sync .st{display:none}.sync{padding:7px 10px}}
+/* средняя ширина (планшет, узкое окно): короткие подписи меню, чтобы шапка помещалась */
+@media(min-width:761px) and (max-width:1180px){.nav .nl{display:none}.nav .ns{display:inline}.nav button{padding:10px 13px}.sync .st{display:none}.sync{padding:7px 10px}.top-in{gap:10px}}
+@media(min-width:761px) and (max-width:960px){.brand span{display:none}.nav button{flex-direction:column;gap:2px;font-size:11.5px;padding:6px 12px;border-radius:18px}.nav{border-radius:24px}}
 </style>
 </head>
 <body>
@@ -377,10 +417,11 @@ const KEY = 'da_cabinet_v1'; // старое хранилище (до облак
 const SB_URL = 'https://uhyprdnclnletepnrtla.supabase.co';
 const SB_KEY = 'sb_publishable_uSC5VrRjZdgkQl30syr0BQ_Pix3uSi1';
 const SB_TABLE = 'cabinet_items';
+const SB_TRAVEL = 'travel_items'; // поездки — в отдельной таблице, чтобы старые открытые вкладки их не видели и не трогали
 const SB_BUCKET = 'media';
 const CL = {sb:null, uid:null, email:'', base:{}, since:null, urls:{}, pmedia:{}, ready:false,
   busy:false, again:false, pulling:false, hold:0, status:'', needRender:false, pushT:null, warned:false,
-  miss:{}, pushSeq:0, seedHeld:false, leaving:false};
+  miss:{}, pushSeq:0, seedHeld:false, leaving:false, sinceT:null, travelOff:false};
 
 /* ---------- справочники ---------- */
 const STATUSES = ['идея','разработка','сценарий','съёмка','монтаж','опубликовано'];
@@ -399,7 +440,8 @@ const NAV = [
   ['home','Главная','Главная','🏠'],
   ['blog','Блог','Блог','🎬'],
   ['journal','Journaling','Дневник','📓'],
-  ['self','Саморазвитие','Развитие','🌱']
+  ['self','Саморазвитие','Развитие','🌱'],
+  ['travel','Путешествия','Поездки','✈️']
 ];
 
 /* ---------- утилиты ---------- */
@@ -433,7 +475,8 @@ function emptyState(){
     timer:null, timerCfg:{section:'Блог', dur:25},
     ideas:[], refs:[], journal:[], weekly:{},
     courses:[], books:[], goals:[],
-    posts:[], blogSeeded:0, postsMigrated:0
+    posts:[], blogSeeded:0, postsMigrated:0,
+    trips:[], stops:[]
   };
 }
 
@@ -518,7 +561,8 @@ const UI = {
   btab:'ideas', bplat:'all', bweek:weekStart(T()), bmonth:T().slice(0,7),
   jtab:'write', jf:'all', jq:'', jweek:weekStart(T()), jprompt:rand(PROMPTS.free),
   hsel:null, hmonth:T().slice(0,7),
-  rplat:'all', rper:'all', rsort:'date', cmp:[], post:null
+  rplat:'all', rper:'all', rsort:'date', cmp:[], post:null,
+  trip:null, tf:'all'
 };
 
 /* ---------- хелперы предметной области ---------- */
@@ -1511,7 +1555,7 @@ setInterval(() => {
    ДЕЙСТВИЯ (клики)
    ========================================================= */
 const ACT = {
-  nav: d => go(d.v),
+  nav: d => { if(d.v==='travel' && view==='travel') UI.trip = null; go(d.v); },
   settings: () => openSettings(),
 
   /* главная */
@@ -1627,6 +1671,18 @@ const ACT = {
   chip: (d, el) => el.classList.toggle('on'),
   swt: (d, el) => el.classList.toggle('on'),
 
+  /* путешествия */
+  tripFilter: d => { UI.tf = d.v; render(); },
+  tripNew: () => openTrip(),
+  tripOpen: d => { UI.trip = d.id; render(); window.scrollTo(0,0); },
+  tripBack: () => { UI.trip = null; render(); window.scrollTo(0,0); },
+  tripEdit: d => openTrip(d.id),
+  stopNew: d => openStop(null, d.trip, d.day),
+  stopEdit: d => openStop(d.id),
+  stopMove: d => moveStop(d.id, +d.v),
+  stopDel: d => { const x = byId(S.stops, d.id); if(!x || !confirm(`Удалить остановку «${x.name || 'без названия'}»?`)) return; del(S.stops, x.id); save(); toast('Остановка удалена'); },
+  ext: () => {},
+
   /* данные */
   export: async (d, el) => {
     if(el) el.disabled = true;
@@ -1717,14 +1773,161 @@ document.getElementById('importFile').addEventListener('change', e => {
 });
 
 /* =========================================================
+   ПУТЕШЕСТВИЯ
+   ========================================================= */
+const TRIP_STATUSES = ['планируется','предстоит','в путешествии','завершена'];
+const TRIP_CLS = {'планируется':'plan', 'предстоит':'soon', 'в путешествии':'now', 'завершена':'done'};
+const TRIP_ICO = {'планируется':'🗺', 'предстоит':'🧳', 'в путешествии':'✈️', 'завершена':'🏁'};
+const tripBadge = st => `<span class="tst ${TRIP_CLS[st]||'plan'}">${TRIP_ICO[st]||'🗺'} ${esc(st||'планируется')}</span>`;
+function tripDays(t){
+  if(t.start && t.end && t.end>=t.start){ const out = []; for(let k=t.start; k<=t.end && out.length<366; k=addDays(k,1)) out.push(k); return out; }
+  return t.start && !t.end ? [t.start] : [];
+}
+function tripDates(t){
+  const y = {day:'numeric', month:'long', year:'numeric'};
+  if(t.start && t.end){
+    if(t.start===t.end) return fmtD(t.start, y);
+    return fmtD(t.start, t.start.slice(0,4)===t.end.slice(0,4) ? {day:'numeric', month:'long'} : y)+' — '+fmtD(t.end, y);
+  }
+  if(t.start) return 'с '+fmtD(t.start, y);
+  if(t.end) return 'до '+fmtD(t.end, y);
+  return 'Даты не указаны';
+}
+const tripStops = t => S.stops.filter(x => x.tripId===t.id);
+/* остановки одной группы плана: конкретный день или «без даты» (нет даты или дата вне поездки) */
+function stopGroup(t, day){ const days = tripDays(t); return tripStops(t).filter(x => day ? x.day===day : !days.includes(x.day||'')); }
+
+function vTravel(){
+  const t = UI.trip && byId(S.trips, UI.trip);
+  if(t) return tripView(t);
+  UI.trip = null;
+  const n = st => S.trips.filter(x => x.status===st).length;
+  const rank = st => ({'в путешествии':0, 'предстоит':1, 'планируется':2, 'завершена':3}[st] ?? 2);
+  const list = S.trips.filter(x => UI.tf==='all' || x.status===UI.tf).slice().sort((a,b) => rank(a.status)-rank(b.status)
+    || (a.status==='завершена' ? (b.start||'').localeCompare(a.start||'') : (a.start||'9999').localeCompare(b.start||'9999')) || (a.created||0)-(b.created||0));
+  return hero('Путешествия','Мои поездки','Маршруты по дням — от идеи до возвращения домой', [
+      [S.trips.length, plural(S.trips.length,'поездка','поездки','поездок')], [n('в путешествии'),'сейчас в пути'],
+      [n('предстоит')+n('планируется'),'впереди'], [n('завершена'),'завершено']
+    ]) + travelNote() + `
+    <div class="tbar"><div class="tabs">${tabs([['all','Все']].concat(TRIP_STATUSES.map(x => [x, cap(x)])), UI.tf, 'tripFilter')}</div>
+      <div class="sp"></div><button class="btn" data-a="tripNew">+ Поездка</button></div>
+    ${list.length ? `<div class="trips">${list.map(tripCard).join('')}</div>`
+      : `<div class="card"><p class="empty">${S.trips.length ? 'Нет поездок с таким статусом' : 'Пока нет поездок'}</p>${S.trips.length ? '' : '<button class="btn sm" data-a="tripNew" style="margin-top:8px">+ Добавить поездку</button>'}</div>`}`;
+}
+function travelNote(){
+  return CL.travelOff ? '<div class="note">⚠️ Поездки пока сохраняются только в этом браузере: чтобы они попали в облако, в Supabase нужно один раз выполнить скрипт для раздела «Путешествия».</div>' : '';
+}
+function tripCard(t){
+  const days = tripDays(t).length, st = tripStops(t).length;
+  return `<div class="trip ${t.status==='завершена'?'done':''}" data-a="tripOpen" data-id="${t.id}">
+    <div class="trip-band"></div>
+    <div class="trip-in">
+      <div class="row between gap">${tripBadge(t.status)}${days ? `<span class="mini">${days} ${plural(days,'день','дня','дней')}</span>` : ''}</div>
+      <b class="trip-t">${esc(t.title || 'Без названия')}</b>
+      ${(t.countries||'').trim() ? `<div class="trip-m">📍 ${esc(t.countries)}</div>` : ''}
+      ${(t.cities||'').trim() ? `<div class="trip-m muted">🏙 ${esc(t.cities)}</div>` : ''}
+      <div class="trip-m muted">🗓 ${tripDates(t)}</div>
+      <div class="mini">${st ? `${st} ${plural(st,'остановка','остановки','остановок')} в маршруте` : 'маршрут пока пустой'}</div>
+    </div>
+  </div>`;
+}
+function tripView(t){
+  const days = tripDays(t), stops = tripStops(t), today = T();
+  const groups = days.map((d,i) => ({day:d, title:`День ${i+1}`, sub:cap(fmtD(d,{weekday:'short', day:'numeric', month:'long'}))}));
+  if(!days.length) groups.push({day:'', title:'План поездки', sub:'Укажи даты поездки — и план разложится по дням'});
+  else if(stopGroup(t,'').length) groups.push({day:'', title:'Без даты', sub:'Остановки без дня или вне дат поездки'});
+  const place = [t.countries, t.cities].map(x => (x||'').trim()).filter(Boolean).map(esc).join(' · ');
+  return `<div class="trip-nav"><button class="btn ghost sm" data-a="tripBack">← Все поездки</button><button class="btn ghost sm" data-a="tripEdit" data-id="${t.id}">✎ Изменить поездку</button></div>`
+    + hero(tripBadge(t.status), esc(t.title || 'Без названия'), (place ? '📍 '+place+'<br>' : '')+'🗓 '+tripDates(t), [
+      [days.length || '—', plural(days.length,'день','дня','дней')], [stops.length, plural(stops.length,'остановка','остановки','остановок')]
+    ]) + travelNote() + `
+    <div class="days">${groups.map(g => dayCard(t, g, g.day && g.day===today)).join('')}</div>`;
+}
+function dayCard(t, g, isToday){
+  const list = stopGroup(t, g.day);
+  return `<section class="card ${isToday?'glow':''}">
+    <div class="ch"><div><h2>${g.title}</h2><div class="day-sub">${isToday ? 'Сегодня · ' : ''}${g.sub}</div></div>
+      <button class="btn sm ghost" data-a="stopNew" data-trip="${t.id}" data-day="${g.day}">+ Остановка</button></div>
+    ${list.map((x,i) => `<div class="stop">
+      <div class="stop-time ${x.time?'':'none'}">${x.time ? esc(x.time) : '—'}</div>
+      <div class="stop-b" data-a="stopEdit" data-id="${x.id}">
+        <b>${esc(x.name || 'Без названия')}</b>
+        ${(x.desc||'').trim() ? `<p class="stop-d">${esc(x.desc)}</p>` : ''}
+        ${safeUrl(x.url) ? `<a class="stop-map" href="${esc(x.url.trim())}" target="_blank" rel="noopener" data-a="ext">📍 Google Maps ↗</a>` : ''}
+      </div>
+      <div class="stop-act">
+        <button class="ic" data-a="stopMove" data-id="${x.id}" data-v="-1" title="Выше" ${i===0?'disabled':''}>↑</button>
+        <button class="ic" data-a="stopMove" data-id="${x.id}" data-v="1" title="Ниже" ${i===list.length-1?'disabled':''}>↓</button>
+        <button class="ic" data-a="stopDel" data-id="${x.id}" title="Удалить">×</button>
+      </div>
+    </div>`).join('') || '<p class="empty">Пока нет остановок</p>'}
+  </section>`;
+}
+function openTrip(id){
+  const isNew = !id, t = id ? byId(S.trips, id) : {id:uid(), title:'', countries:'', cities:'', start:'', end:'', status:'планируется', created:Date.now()};
+  if(!t) return;
+  openForm({title: isNew ? 'Новая поездка' : 'Поездка', values:t, fields:[
+    {k:'title', label:'Название', req:true, ph:'Например: Весна в Японии'},
+    {k:'countries', label:'Страна или страны', ph:'Япония, Южная Корея'},
+    {k:'cities', label:'Города', ph:'Токио, Киото, Сеул'},
+    {k:'start', label:'Начало', type:'date', half:1},
+    {k:'end', label:'Окончание', type:'date', half:1},
+    {k:'status', label:'Статус', type:'select', options:TRIP_STATUSES},
+    {type:'hint', label:'Обязательно только название — остальное можно заполнить позже.'}
+  ],
+  validate: v => v.start && v.end && v.end<v.start ? 'Окончание не может быть раньше начала' : '',
+  onSave: v => { Object.assign(t, v); if(isNew){ S.trips.push(t); UI.trip = t.id; window.scrollTo(0,0); } },
+  onDelete: isNew ? null : () => { del(S.trips, t.id); S.stops = S.stops.filter(x => x.tripId!==t.id); UI.trip = null; }});
+}
+function openStop(id, tripId, day){
+  const s = id ? byId(S.stops, id) : {id:uid(), tripId, day:day||'', name:'', time:'', desc:'', url:''};
+  const t = s && byId(S.trips, s.tripId); if(!s || !t) return;
+  const days = tripDays(t);
+  const dayOpts = days.map((d,i) => [d, `День ${i+1} · ${fmtD(d,{day:'numeric', month:'short'})}`]);
+  if(s.day && !days.includes(s.day)) dayOpts.push([s.day, fmtD(s.day,{day:'numeric', month:'short', year:'numeric'})+' (вне дат поездки)']);
+  dayOpts.push(['', 'Без даты']);
+  openForm({title: id ? 'Остановка' : 'Новая остановка', values:s, fields:[
+    {k:'name', label:'Место', req:true, ph:'Например: храм Сэнсо-дзи'},
+    {k:'time', label:'Время', type:'time', half:1},
+    {k:'day', label:'День', type:'select', options:dayOpts, half:1},
+    {k:'desc', label:'Описание', type:'textarea', rows:3, ph:'Что посмотреть, как добраться, заметки'},
+    {k:'url', label:'Ссылка на Google Maps', type:'url', ph:'https://maps.app.goo.gl/…'},
+    {type:'hint', label:'Обязательно только название места.'}
+  ],
+  validate: v => v.url.trim() && !safeUrl(v.url) ? 'Ссылка должна начинаться с https://' : '',
+  onSave: v => {
+    const moved = id && v.day!==s.day;
+    Object.assign(s, v); s.url = s.url.trim();
+    if(!id || moved){ del(S.stops, s.id); S.stops.push(s); } // новая или перенесённая в другой день — в конец дня
+  },
+  onDelete: id ? () => del(S.stops, s.id) : null});
+}
+function moveStop(id, dir){
+  const s = byId(S.stops, id), t = s && byId(S.trips, s.tripId); if(!t) return;
+  const days = tripDays(t), list = stopGroup(t, days.includes(s.day||'') ? s.day : ''), j = list.indexOf(s)+dir;
+  if(j<0 || j>=list.length) return;
+  const a = S.stops.indexOf(s), b = S.stops.indexOf(list[j]);
+  [S.stops[a], S.stops[b]] = [S.stops[b], S.stops[a]];
+  save();
+}
+
+/* =========================================================
    ОБЛАКО · вход, синхронизация, изображения, перенос
    Каждая запись кабинета хранится отдельной строкой таблицы cabinet_items:
    kind — раздел (tasks, habits, journal…), item_id — id записи, data — сама запись.
    ========================================================= */
-const ARR_KINDS = ['habits','tasks','focus','ideas','refs','journal','courses','books','goals','posts'];
+const ARR_KINDS = ['habits','tasks','focus','ideas','refs','journal','courses','books','goals','posts','trips','stops'];
 const MAP_KINDS = [['habitLog','habit_log'],['days','days'],['weekly','weekly']];
 const SET_KEYS = ['v','clean','habitsSeeded','name','timer','timerCfg','blogSeeded','postsMigrated'];
 const DEL = '-';
+const TRAVEL_KINDS = ['trips','stops'];
+/* в какой таблице живёт запись: поездки и остановки (и их порядок) — в travel_items, остальное — в cabinet_items */
+const isTravelKey = key => { const i = key.indexOf('|'), kind = key.slice(0,i); return TRAVEL_KINDS.includes(kind) || (kind==='order' && TRAVEL_KINDS.includes(key.slice(i+1))); };
+const tableOfKey = key => isTravelKey(key) ? SB_TRAVEL : SB_TABLE;
+/* записи разделов, о которых эта версия кабинета ещё не знает, не трогаем вовсе */
+const KNOWN_KINDS = new Set(['settings','order', ...ARR_KINDS, ...MAP_KINDS.map(x => x[1])]);
+const isKnownKey = key => { const i = key.indexOf('|'), kind = key.slice(0,i); return KNOWN_KINDS.has(kind) && (kind!=='order' || ARR_KINDS.includes(key.slice(i+1))); };
+const skipKey = key => CL.travelOff && isTravelKey(key);
 const RECOVERY = /type=recovery/.test(location.hash);
 const $id = id => document.getElementById(id);
 const cloudKey = k => 'da_cloud_'+CL.uid+'_'+k;
@@ -1790,7 +1993,7 @@ function prepLight(){
 /* ---------- копия в браузере ---------- */
 function lsGet(k, def){ try { const r = localStorage.getItem(cloudKey(k)); return r ? JSON.parse(r) : def; } catch(err) { return def; } }
 function lsSet(k, v){ try { localStorage.setItem(cloudKey(k), JSON.stringify(v)); return true; } catch(err) { return false; } }
-function saveBase(){ if(CL.uid) lsSet('base', {base:CL.base, since:CL.since}); }
+function saveBase(){ if(CL.uid) lsSet('base', {base:CL.base, since:CL.since, sinceT:CL.sinceT}); }
 function saveUrls(){ if(CL.uid) lsSet('urls', CL.urls); }
 function savePendingMedia(){ if(CL.uid) lsSet('pmedia', CL.pmedia); }
 function saveLocalCopy(){ if(CL.uid) lsSet('state', S); }
@@ -1820,8 +2023,8 @@ function pendingCount(){
   if(!CL.uid) return 0;
   ensureIds(S);
   const items = cloudItems(S); let n = Object.keys(CL.pmedia).length;
-  for(const key in items) if(CL.base[key]!==hashOf(items[key].data)) n++;
-  for(const key in CL.base) if(!items[key] && CL.base[key]!==DEL) n++;
+  for(const key in items) if(!skipKey(key) && CL.base[key]!==hashOf(items[key].data)) n++;
+  for(const key in CL.base) if(!items[key] && !skipKey(key) && isKnownKey(key) && CL.base[key]!==DEL) n++;
   return n;
 }
 async function cloudPush(){
@@ -1834,15 +2037,19 @@ async function cloudPush(){
     const failed = await uploadPendingMedia();
     ensureIds(S);
     const items = cloudItems(S), rows = [], hs = [];
-    for(const key in items){ const it = items[key], h = hashOf(it.data);
+    for(const key in items){ if(skipKey(key)) continue; const it = items[key], h = hashOf(it.data);
       if(CL.base[key]!==h){ rows.push({user_id:CL.uid, kind:it.kind, item_id:it.id, data:JSON.parse(JSON.stringify(it.data)), deleted:false}); hs.push([key,h]); } }
-    for(const key in CL.base){ if(!items[key] && CL.base[key]!==DEL){ const i = key.indexOf('|');
+    for(const key in CL.base){ if(!items[key] && !skipKey(key) && isKnownKey(key) && CL.base[key]!==DEL){ const i = key.indexOf('|');
       rows.push({user_id:CL.uid, kind:key.slice(0,i), item_id:key.slice(i+1), data:{}, deleted:true}); hs.push([key,DEL]); } }
-    for(let i=0;i<rows.length;i+=200){
-      const {error} = await CL.sb.from(SB_TABLE).upsert(rows.slice(i,i+200), {onConflict:'user_id,kind,item_id'});
-      if(error) throw error;
-      hs.slice(i,i+200).forEach(([k,h]) => { CL.base[k] = h; });
-      CL.pushSeq++; saveBase();
+    for(const table of [SB_TABLE, SB_TRAVEL]){
+      const idx = hs.map((x,i) => i).filter(i => tableOfKey(hs[i][0])===table);
+      for(let i=0;i<idx.length;i+=200){
+        const part = idx.slice(i,i+200);
+        const {error} = await CL.sb.from(table).upsert(part.map(j => rows[j]), {onConflict:'user_id,kind,item_id'});
+        if(error){ if(table===SB_TRAVEL && !isNetErr(error)){ console.warn('travel table', error); CL.travelOff = true; requestRender(); break; } throw error; }
+        part.forEach(j => { CL.base[hs[j][0]] = hs[j][1]; });
+        CL.pushSeq++; saveBase();
+      }
     }
     if(failed){ ok = false; setStatus('err'); } else setStatus('ok');
   } catch(err) { ok = false; console.warn('cloud push', err); setStatus(isNetErr(err) ? 'off' : 'err'); }
@@ -1869,29 +2076,29 @@ async function cloudPull(fresh){
   if(!CL.uid || CL.pulling || CL.busy) return false;
   CL.pulling = true;
   try {
-    const seq = CL.pushSeq, rows = [];
-    const since = !fresh && CL.since ? new Date(new Date(CL.since).getTime()-15000).toISOString() : null;
-    for(let from=0;;from+=1000){
-      let q = CL.sb.from(SB_TABLE).select('kind,item_id,data,deleted,updated_at')
-        .order('updated_at',{ascending:true}).order('kind').order('item_id').range(from, from+999);
-      q = since ? q.gt('updated_at', since) : q.eq('deleted', false);
-      const {data, error} = await q; if(error) throw error;
-      rows.push(...data); if(data.length<1000) break;
-    }
+    const seq = CL.pushSeq, back = t => !fresh && t ? new Date(new Date(t).getTime()-15000).toISOString() : null;
+    const rows = await fetchRows(SB_TABLE, back(CL.since));
+    let trows = [], travelOff = false;
+    try { trows = await fetchRows(SB_TRAVEL, CL.travelOff ? null : back(CL.sinceT)); }
+    catch(err) { if(isNetErr(err)) throw err; console.warn('travel table', err); travelOff = true; } // ошибка таблицы поездок не мешает остальным разделам
     /* пока открыто окно, идёт ввод или отправка — не подменяем данные, заберём их в следующий раз */
     if(CL.busy || seq!==CL.pushSeq || CL.hold || (CL.ready && (isModalOpen() || isTyping()))) return false;
-    if(fresh){ CL.base = {}; CL.since = null; }
+    if(fresh){ CL.base = {}; CL.since = null; CL.sinceT = null; }
+    const wasOff = CL.travelOff; CL.travelOff = travelOff;
     ensureIds(S);
     const local = fresh ? {} : cloudItems(S);
-    let changed = fresh, mx = CL.since;
-    rows.forEach(r => {
-      const key = r.kind+'|'+r.item_id, rh = r.deleted ? DEL : hashOf(r.data);
+    let changed = fresh || wasOff!==travelOff;
+    const apply = r => {
+      const key = r.kind+'|'+r.item_id; if(!isKnownKey(key)) return;
+      const rh = r.deleted ? DEL : hashOf(r.data);
       const lh = local[key] ? hashOf(local[key].data) : DEL, bh = CL.base[key]==null ? DEL : CL.base[key];
       if(lh===bh && lh!==rh){ if(r.deleted) delete local[key]; else local[key] = {kind:r.kind, id:r.item_id, data:r.data}; changed = true; }
       CL.base[key] = rh;
-      if(!mx || r.updated_at>mx) mx = r.updated_at;
-    });
-    CL.since = mx; saveBase();
+    };
+    const maxTs = (list, cur) => list.reduce((m,r) => !m || r.updated_at>m ? r.updated_at : m, cur);
+    rows.forEach(apply); trows.forEach(apply);
+    CL.since = maxTs(rows, CL.since); if(!travelOff) CL.sinceT = maxTs(trows, CL.sinceT);
+    saveBase();
     if(changed){
       S = cloudState(local); prepLight();
       if(CL.ready){ saveLocalCopy(); requestRender(); }
@@ -1900,6 +2107,17 @@ async function cloudPull(fresh){
     return true;
   } catch(err) { console.warn('cloud pull', err); if(CL.ready) setStatus(isNetErr(err) ? 'off' : 'err'); return false; }
   finally { CL.pulling = false; }
+}
+async function fetchRows(table, since){
+  const rows = [];
+  for(let from=0;;from+=1000){
+    let q = CL.sb.from(table).select('kind,item_id,data,deleted,updated_at')
+      .order('updated_at',{ascending:true}).order('kind').order('item_id').range(from, from+999);
+    q = since ? q.gt('updated_at', since) : q.eq('deleted', false);
+    const {data, error} = await q; if(error) throw error;
+    rows.push(...data); if(data.length<1000) break;
+  }
+  return rows;
 }
 function requestRender(){ if(isModalOpen() || isTyping()){ CL.needRender = true; return; } CL.needRender = false; render(); }
 
@@ -2147,7 +2365,7 @@ async function startCloud(user){
   Object.keys(CL.pmedia).forEach(id => { MEDIA[id] = CL.pmedia[id]; });
   if(cached && b){
     /* на этом устройстве уже есть копия: открываем сразу, свежие данные подтянутся следом */
-    CL.base = b.base || {}; CL.since = b.since || null; S = normalize(cached);
+    CL.base = b.base || {}; CL.since = b.since || null; CL.sinceT = b.sinceT || null; S = normalize(cached);
     beginApp(); cloudSync(); return;
   }
   authShow('Минутку…', 'Загружаю данные из облака', '<p class="muted" style="margin:0">Это нужно только при первом входе на этом устройстве.</p>');
@@ -2193,7 +2411,7 @@ setInterval(() => { if(CL.needRender && !isModalOpen() && !isTyping()){ CL.needR
 /* =========================================================
    НАВИГАЦИЯ И ОТРИСОВКА
    ========================================================= */
-const VIEWS = {home:vHome, blog:vBlog, journal:vJournal, self:vSelf};
+const VIEWS = {home:vHome, blog:vBlog, journal:vJournal, self:vSelf, travel:vTravel};
 let view = (location.hash||'').slice(1);
 if(!VIEWS[view]) view = 'home';
 
