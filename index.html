@@ -387,6 +387,21 @@ a.btn{text-decoration:none;display:inline-block}
   .doc-frame{height:62vh}
 }
 
+/* ---------- проживание в маршруте ---------- */
+.stays{display:grid;gap:8px;margin-bottom:6px}
+.stay{display:flex;gap:10px;align-items:flex-start;background:#f7f9f4;border-radius:16px;padding:10px 12px}
+.stay.in{background:#eaf4de}
+.stay.out{background:#f6eef8}
+.stay-i{flex:none;font-size:18px;line-height:1.3}
+.stay-b{flex:1;min-width:0;line-height:1.35}
+.stay-l{font-weight:700;color:var(--muted)}
+.stay-h{border:0;background:none;padding:0;font:inherit;font-weight:800;color:var(--green);text-decoration:underline;text-decoration-color:var(--lilac);text-underline-offset:3px;cursor:pointer;text-align:left;word-break:break-word}
+.stay-t{display:inline-block;font-size:12.5px;font-weight:800;color:var(--green);background:#fff;border-radius:999px;padding:1px 8px;margin-left:4px;white-space:nowrap}
+.card.swap{box-shadow:0 0 0 3px var(--lime),var(--shadow)}
+.swap-b{display:inline-block;font-size:11.5px;font-weight:800;padding:3px 10px;border-radius:999px;background:var(--lime);color:var(--green);margin-top:6px}
+.doc.flash{box-shadow:0 0 0 3px var(--lilac),var(--shadow)}
+.f.off{display:none}
+
 /* ---------- облако: вход и статус синхронизации ---------- */
 .sync{border:0;background:#fff;border-radius:999px;padding:7px 12px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;box-shadow:var(--shadow);display:flex;gap:6px;align-items:center}
 .sync[hidden]{display:none}
@@ -1487,7 +1502,7 @@ function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; FORM
 
 function fieldHtml(f, v){
   if(f.type==='h') return `<div class="fh">${esc(f.label)}</div>`;
-  if(f.type==='hint') return `<div class="fhint">${esc(f.label)}</div>`;
+  if(f.type==='hint') return `<div class="fhint"${f.id ? ` id="${f.id}"` : ''}>${esc(f.label)}</div>`;
   const cls = 'f'+(f.half ? ' half' : ''), ph = f.ph ? ` placeholder="${esc(f.ph)}"` : '';
   let inner;
   switch(f.type){
@@ -1715,6 +1730,7 @@ const ACT = {
   stopDel: d => { const x = byId(S.stops, d.id); if(!x || !confirm(`Удалить остановку «${x.name || 'без названия'}»?`)) return; del(S.stops, x.id); save(); toast('Остановка удалена'); },
   ext: () => {},
   tripTab: d => { UI.ttab = d.v; render(); },
+  stayOpen: d => showDoc(d.id),
   docCat: d => { UI.dcat = d.v; render(); },
   docFiles: d => pickDocFiles(d.trip),
   docLink: d => openDocForm(null, d.trip),
@@ -1886,10 +1902,12 @@ function tripView(t){
     ${UI.ttab==='docs' ? docsTab(t) : `<div class="days">${groups.map(g => dayCard(t, g, g.day && g.day===today)).join('')}</div>`}`;
 }
 function dayCard(t, g, isToday){
-  const list = stopGroup(t, g.day);
-  return `<section class="card ${isToday?'glow':''}">
-    <div class="ch"><div><h2>${g.title}</h2><div class="day-sub">${isToday ? 'Сегодня · ' : ''}${g.sub}</div></div>
+  const list = stopGroup(t, g.day), ev = g.day ? (stayEvents(t)[g.day] || []) : [];
+  const swap = ev.some(e => e.type==='out') && ev.some(e => e.type==='in');
+  return `<section class="card ${isToday?'glow':''} ${swap?'swap':''}">
+    <div class="ch"><div><h2>${g.title}</h2><div class="day-sub">${isToday ? 'Сегодня · ' : ''}${g.sub}</div>${swap ? '<span class="swap-b">🔄 Смена жилья</span>' : ''}</div>
       <button class="btn sm ghost" data-a="stopNew" data-trip="${t.id}" data-day="${g.day}">+ Остановка</button></div>
+    ${ev.length ? `<div class="stays">${ev.map(stayLine).join('')}</div>` : ''}
     ${list.map((x,i) => `<div class="stop">
       <div class="stop-time ${x.time?'':'none'}">${x.time ? esc(x.time) : '—'}</div>
       <div class="stop-b" data-a="stopEdit" data-id="${x.id}">
@@ -1977,7 +1995,7 @@ function docFileName(x){
 }
 function docMeta(x){
   const c = docCatOf(x.cat);
-  return [c[1]+' '+c[2], x.date ? fmtD(x.date,{day:'numeric', month:'long', year:'numeric'}) : '',
+  return [c[1]+' '+c[2], c[0]==='stay' ? stayMeta(x) : x.date ? fmtD(x.date,{day:'numeric', month:'long', year:'numeric'}) : '',
     x.type==='link' ? '🔗 '+linkHost(x.url) : (DOC_TYPES[x.mime]||'файл').toUpperCase()+' · '+fmtSize(x.size)].filter(Boolean).join(' · ');
 }
 function docsTab(t){
@@ -2008,7 +2026,7 @@ function docRow(x){
     ? (safeUrl(x.url) ? `<a class="btn sm" href="${esc(x.url.trim())}" target="_blank" rel="noopener" data-a="ext">Открыть ↗</a>` : '')
     : (ok ? `<button class="btn sm" data-a="docView" data-id="${x.id}">Просмотр</button><a class="btn sm ghost" href="${esc(u.dl)}" data-a="ext">⬇ Скачать</a>`
           : `<button class="btn sm" data-a="docWait">Просмотр</button>`);
-  return `<div class="doc">${x.type==='link' && safeUrl(x.url) ? `<a href="${esc(x.url.trim())}" target="_blank" rel="noopener" data-a="ext" style="display:contents">${th}</a>` : th}
+  return `<div class="doc" id="doc-${x.id}">${x.type==='link' && safeUrl(x.url) ? `<a href="${esc(x.url.trim())}" target="_blank" rel="noopener" data-a="ext" style="display:contents">${th}</a>` : th}
     <div class="doc-b" data-a="docEdit" data-id="${x.id}"><b>${esc(x.title || 'Без названия')}</b><div class="mini">${esc(docMeta(x))}</div>${(x.note||'').trim() ? `<p class="doc-n">${esc(x.note)}</p>` : ''}</div>
     <div class="doc-act">${acts}<button class="ic" data-a="docEdit" data-id="${x.id}" title="Переименовать или изменить">✎</button><button class="ic" data-a="docDel" data-id="${x.id}" title="Удалить">×</button></div>
   </div>`;
@@ -2052,16 +2070,19 @@ function openDocForm(id, tripId){
   const x = id ? byId(S.docs, id) : {id:uid(), tripId, type:'link', title:'', cat:'stay', date:'', note:'', url:'', created:Date.now()};
   if(!x) return;
   const isLink = x.type==='link';
-  openForm({title: id ? (isLink ? 'Ссылка на бронирование' : 'Документ') : 'Ссылка на бронирование', values:x, fields:[
+  openForm({title: id ? (isLink ? 'Ссылка на бронирование' : 'Документ') : 'Ссылка на бронирование', fields:[
     {k:'title', label:'Название', req:true, ph: isLink ? 'Например: Отель в Киото, Booking' : ''},
     ...(isLink ? [{k:'url', label:'Ссылка', type:'url', req:true, ph:'https://…'}] : []),
     {k:'cat', label:'Категория', type:'select', options:DOC_CATS.map(c => [c[0], c[1]+' '+c[2]]), half:1},
     {k:'date', label:'Дата (необязательно)', type:'date', half:1},
-    {k:'note', label:'Заметка (необязательно)', type:'textarea', rows:3, ph:'Номер брони, время заезда, что взять с собой'},
+    ...STAY_FIELDS,
+    {k:'note', label:'Заметка (необязательно)', type:'textarea', rows:3, ph:'Номер брони, что взять с собой'},
     ...(!isLink && x.name ? [{type:'hint', label:`Файл: ${x.name} · ${fmtSize(x.size)}`}] : [])
   ],
-  validate: v => isLink && !safeUrl(v.url) ? 'Ссылка должна начинаться с https://' : '',
-  onSave: v => { Object.assign(x, v); if(isLink) x.url = x.url.trim(); if(!id) S.docs.push(x); delete CL.durls[x.id]; /* имя для скачивания обновится */ },
+  values: stayFormValues(x),
+  onInput: form => stayFormToggle(form),
+  validate: v => isLink && !safeUrl(v.url) ? 'Ссылка должна начинаться с https://' : stayInvalid(v),
+  onSave: v => { Object.assign(x, v); stayNormalize(x); if(isLink) x.url = x.url.trim(); if(!id) S.docs.push(x); delete CL.durls[x.id]; /* имя для скачивания обновится */ },
   onDelete: id ? () => { del(S.docs, x.id); removeDocFiles([x]); } : null});
 }
 function deleteDoc(id){
@@ -2122,8 +2143,13 @@ function openDocUpload(files){
   const its = DOCUP.items;
   openModal(`<h3>Загрузка документов</h3>
     <div class="fg">
-      <div class="f half"><span>Категория</span><select id="dupCat">${DOC_CATS.map(c => `<option value="${c[0]}">${c[1]} ${c[2]}</option>`).join('')}</select></div>
-      <div class="f half"><span>Дата (необязательно)</span><input id="dupDate" type="date"></div>
+      <div class="f half"><span>Категория</span><select id="dupCat" onchange="dupStayToggle()">${DOC_CATS.map(c => `<option value="${c[0]}">${c[1]} ${c[2]}</option>`).join('')}</select></div>
+      <div class="f half" id="dupDateF"><span>Дата (необязательно)</span><input id="dupDate" type="date"></div>
+      <div class="f half off" data-stay><span>Заезд</span><input id="dupIn" type="date" onchange="dupStayToggle()"></div>
+      <div class="f half off" data-stay><span>Выезд</span><input id="dupOut" type="date" onchange="dupStayToggle()"></div>
+      <div class="f half off" data-stay><span>Время заселения</span><input id="dupInT" type="time"></div>
+      <div class="f half off" data-stay><span>Время выезда</span><input id="dupOutT" type="time"></div>
+      <div class="fhint off" id="dupNights" data-stay></div>
       <div class="f"><span>Заметка (необязательно)</span><input id="dupNote" placeholder="Например: номер брони"></div>
     </div>
     <div class="lbl">${its.length} ${plural(its.length,'файл','файла','файлов')}</div>
@@ -2135,10 +2161,12 @@ function openDocUpload(files){
 async function runDocUpload(){
   const up = DOCUP, t = up && byId(S.trips, up.tripId);
   if(!up || up.running || !t) return;
-  up.running = true; CL.hold++;
   const cat = $id('dupCat').value, date = $id('dupDate').value, note = $id('dupNote').value.trim();
+  const stay = cat==='stay' ? {checkin:$id('dupIn').value, checkout:$id('dupOut').value, checkinTime:$id('dupInT').value, checkoutTime:$id('dupOutT').value} : null;
+  const stayErr = stay && stayInvalid(stay); if(stayErr){ toast(stayErr); return; }
+  up.running = true; CL.hold++;
   const go = $id('dupGo'); go.disabled = true; go.textContent = 'Загружаю…';
-  ['dupCat','dupDate','dupNote'].forEach(k => { $id(k).disabled = true; });
+  ['dupCat','dupDate','dupNote','dupIn','dupOut','dupInT','dupOutT'].forEach(k => { $id(k).disabled = true; });
   let ok = 0, bad = 0;
   for(const it of up.items){
     const set = (p, txt, err) => { const row = $id('up-'+it.id); if(!row) return; row.querySelector('.bar i').style.width = p+'%';
@@ -2156,6 +2184,7 @@ async function runDocUpload(){
       await uploadWithProgress(SB_DOCS, path, blob, mime, p => set(Math.round(p*100), 'Загружаю… '+Math.round(p*100)+'%'));
       S.docs.push({id:docId, tripId:t.id, type:'file', title:(it.f.name.replace(/\.[^.]+$/,'') || 'Документ').slice(0,120), cat, date, note,
         path, mime, size:blob.size, name:it.f.name, created:Date.now()});
+      if(stay) stayNormalize(Object.assign(S.docs[S.docs.length-1], stay));
       save();
       set(100, '✓ Загружено'); ok++;
     } catch(err) { bad++; set(0, docErrText(err), true); }
@@ -2168,6 +2197,74 @@ document.getElementById('docFile').addEventListener('change', e => {
   const files = [...e.target.files]; e.target.value = '';
   if(files.length) openDocUpload(files); else DOCUP = null;
 });
+
+/* ---------- проживание: бронирования жилья → маршрут по дням ----------
+   Ничего не хранится отдельно: отметки в маршруте каждый раз считаются из документов категории «Жильё»,
+   поэтому правка или удаление бронирования сразу меняет маршрут и дублей не бывает. */
+const STAY_KEYS = ['checkin','checkout','checkinTime','checkoutTime'];
+const STAY_FIELDS = [
+  {k:'checkin', label:'Заезд', type:'date', half:1},
+  {k:'checkout', label:'Выезд', type:'date', half:1},
+  {k:'checkinTime', label:'Время заселения (необязательно)', type:'time', half:1},
+  {k:'checkoutTime', label:'Время выезда (необязательно)', type:'time', half:1},
+  {type:'hint', id:'stayNights', label:''}
+];
+const stayIn = x => x.checkin || x.date || '';           // старые брони с одной датой: дата = заезд
+const stayOut = x => x.checkout || '';
+function stayNights(a, b){ if(!a || !b || b<=a) return 0; return Math.round((parseD(b)-parseD(a))/864e5); }
+const nightsText = n => `${n} ${plural(n,'ночь','ночи','ночей')}`;
+function stayMeta(x){
+  const a = stayIn(x), b = stayOut(x), n = stayNights(a, b), y = {day:'numeric', month:'long', year:'numeric'};
+  const dates = a && b ? fmtD(a, a.slice(0,4)===b.slice(0,4) ? {day:'numeric', month:'long'} : y)+' — '+fmtD(b, y) : a ? 'заезд '+fmtD(a, y) : b ? 'выезд '+fmtD(b, y) : '';
+  return [dates, n ? nightsText(n) : '', x.checkinTime ? 'заселение '+x.checkinTime : '', x.checkoutTime ? 'выезд '+x.checkoutTime : ''].filter(Boolean).join(' · ');
+}
+function stayFormValues(x){ return Object.assign({}, x, {checkin: stayIn(x), checkout: x.checkout||'', checkinTime: x.checkinTime||'', checkoutTime: x.checkoutTime||''}); }
+function stayInvalid(v){ return (v.cat===undefined || v.cat==='stay') && v.checkin && v.checkout && v.checkout<v.checkin ? 'Выезд не может быть раньше заезда' : ''; }
+/* после сохранения: у жилья дата документа = заезд, у других категорий полей проживания нет */
+function stayNormalize(x){
+  if(x.cat==='stay'){ STAY_KEYS.forEach(k => { x[k] = String(x[k]||'').trim(); }); x.date = x.checkin; }
+  else STAY_KEYS.forEach(k => { delete x[k]; });
+  return x;
+}
+function stayFormToggle(form){
+  const stay = form.elements.cat.value==='stay', show = (k, on) => { const el = form.querySelector(`[data-k="${k}"]`); if(el) el.classList.toggle('off', !on); };
+  show('date', !stay); STAY_KEYS.forEach(k => show(k, stay));
+  const n = stayNights(form.elements.checkin.value, form.elements.checkout.value), h = $id('stayNights');
+  if(h){ h.textContent = stay && n ? '🌙 '+nightsText(n) : ''; h.classList.toggle('off', !(stay && n)); }
+}
+function dupStayToggle(){
+  const stay = $id('dupCat').value==='stay';
+  $id('dupDateF').classList.toggle('off', stay);
+  document.querySelectorAll('.modal [data-stay]').forEach(el => el.classList.toggle('off', !stay));
+  const n = stayNights($id('dupIn').value, $id('dupOut').value), h = $id('dupNights');
+  h.textContent = n ? '🌙 '+nightsText(n) : ''; h.classList.toggle('off', !(stay && n));
+}
+/* события проживания по датам: заселение, проживание (промежуточные ночи), выезд; день выезда — не ночь */
+function stayEvents(t){
+  const out = {}, add = (d, e) => { (out[d] = out[d] || []).push(e); };
+  tripDocs(t).filter(x => docCatOf(x.cat)[0]==='stay').forEach(x => {
+    const a = stayIn(x), b = stayOut(x);
+    if(a) add(a, {type:'in', doc:x, time:x.checkinTime||''});
+    if(a && b && b>a) for(let d=addDays(a,1); d<b; d=addDays(d,1)) add(d, {type:'stay', doc:x});
+    if(b && (!a || b>=a)) add(b, {type:'out', doc:x, time:x.checkoutTime||''});
+  });
+  const ord = {out:0, in:1, stay:2};
+  Object.values(out).forEach(l => l.sort((p,q) => ord[p.type]-ord[q.type] || (p.time||'').localeCompare(q.time||'')));
+  return out;
+}
+function stayLine(e){
+  const L = {in:['🔑','Заселение'], stay:['🏨','Проживание'], out:['🧳','Выезд']}[e.type];
+  return `<div class="stay ${e.type}"><span class="stay-i">${L[0]}</span><div class="stay-b"><span class="stay-l">${L[1]}:</span>
+    <button class="stay-h" data-a="stayOpen" data-id="${e.doc.id}" title="Открыть бронирование">${esc(e.doc.title || 'Жильё')}</button>${e.time ? `<span class="stay-t">${esc(e.time)}</span>` : ''}</div></div>`;
+}
+/* открыть бронирование: вкладка «Документы», прокрутка к нему и подсветка */
+function showDoc(id){
+  const x = byId(S.docs, id); if(!x) return;
+  UI.trip = x.tripId; UI.ttab = 'docs'; UI.dcat = 'all'; render();
+  const el = $id('doc-'+id); if(!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'center'}); el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 2200);
+}
 
 /* =========================================================
    ОБЛАКО · вход, синхронизация, изображения, перенос
