@@ -1958,6 +1958,12 @@ const DOC_CATS = [['flights','✈️','Авиабилеты'],['stay','🏨','Ж
 const DOC_TYPES = {'application/pdf':'pdf', 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp'};
 const DOC_EXT = {pdf:'application/pdf', jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', webp:'image/webp'};
 const DOC_MAX = 20*1024*1024; // столько же разрешено в настройке bucket travel-documents
+/* параметры встроенного PDF-просмотрщика (часть адреса после #, на сервер не отправляется):
+   navpanes=0 — Chrome, Edge и Adobe: панель миниатюр скрыта (открывается кнопкой ☰);
+   view=FitH — Chrome, Edge и Adobe: масштаб по ширине;
+   pagemode=none и zoom=page-width — то же для Firefox. Safari эти параметры не читает. */
+const PDF_VIEW = '#view=FitH&navpanes=0&pagemode=none&zoom=page-width';
+const docViewUrl = (x, u) => x.mime==='application/pdf' ? u.view+PDF_VIEW : u.view;
 const docCatOf = k => DOC_CATS.find(c => c[0]===k) || DOC_CATS[DOC_CATS.length-1];
 const tripDocs = t => S.docs.filter(x => x.tripId===t.id);
 const isImgDoc = x => x.type==='file' && /^image\//.test(x.mime||'');
@@ -2033,13 +2039,13 @@ function openDocViewer(id){
   if(!u || u.exp<=Date.now()){ toast('Готовлю ссылку на файл…'); resolveDocUrls(true).then(() => { const v = CL.durls[x.id]; if(v && v.exp>Date.now()) openDocViewer(id); }); return; }
   const touch = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || window.innerWidth<=760; // телефон: PDF — во встроенном просмотрщике
   const body = isImgDoc(x) ? `<img class="doc-img" src="${esc(u.view)}" alt="${esc(x.title)}">`
-    : touch ? `<div class="doc-pdf-m"><b>📄</b><p>PDF удобнее смотреть во встроенном просмотрщике телефона</p><a class="btn" href="${esc(u.view)}" target="_blank" rel="noopener" data-a="ext">Открыть PDF</a></div>`
-    : `<iframe class="doc-frame" src="${esc(u.view)}" title="${esc(x.title)}"></iframe>`;
+    : touch ? `<div class="doc-pdf-m"><b>📄</b><p>PDF удобнее смотреть во встроенном просмотрщике телефона</p><a class="btn" href="${esc(docViewUrl(x,u))}" target="_blank" rel="noopener" data-a="ext">Открыть PDF</a></div>`
+    : `<iframe class="doc-frame" src="${esc(docViewUrl(x,u))}" title="${esc(x.title)}"></iframe>`;
   openModal(`<h3>${esc(x.title || 'Документ')}</h3><div class="mini" style="margin:-8px 0 14px">${esc(docMeta(x))}</div>
     ${body}${(x.note||'').trim() ? `<p class="etext" style="-webkit-line-clamp:unset;display:block">${esc(x.note)}</p>` : ''}
     <div class="mfoot"><button class="btn ghost" data-a="docEdit" data-id="${x.id}">✎ Изменить</button>
       <a class="btn ghost" href="${esc(u.dl)}" data-a="ext">⬇ Скачать</a>
-      <a class="btn ghost" href="${esc(u.view)}" target="_blank" rel="noopener" data-a="ext">Открыть в новой вкладке</a>
+      <a class="btn ghost" href="${esc(docViewUrl(x,u))}" target="_blank" rel="noopener" data-a="ext">Открыть в новой вкладке</a>
       <button class="btn" data-a="mclose">Закрыть</button></div>`, true);
 }
 function openDocForm(id, tripId){
