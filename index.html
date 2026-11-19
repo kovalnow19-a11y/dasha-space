@@ -121,6 +121,13 @@ select:disabled{opacity:.6}
 .task.done .tt{text-decoration:line-through;color:var(--muted)}
 .task .ic{width:28px;height:28px;font-size:13px;background:#fff}
 .task .ic:hover{background:var(--lime)}
+.dsw{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.dsw button{border:0;background:#f1f4ec;color:var(--green);font:inherit;font-weight:700;font-size:13px;padding:7px 13px;border-radius:999px;cursor:pointer}
+.dsw button:hover{background:var(--lime)}
+.dsw button.on{background:var(--green);color:#fff}
+.dsw-d{margin-left:6px;font-weight:700;font-size:13px;color:var(--muted)}
+.plan-hint{margin:-6px 0 12px}
+@media(max-width:760px){.dsw{width:100%}.dsw button{flex:1;padding:9px 6px}.dsw-d{width:100%;margin:4px 0 0;text-align:center}}
 .task .drag{flex:none;width:18px;height:28px;margin-right:-4px;display:grid;place-items:center;border-radius:8px;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;color:#b7c0ae}
 .task .drag i{width:8px;height:14px;background:radial-gradient(circle,currentColor 1.4px,transparent 1.6px) 0 0/4px 4.67px}
 .task .drag:hover,.task .drag:focus-visible{color:var(--green);background:#f1f5ec;outline:none}
@@ -671,6 +678,9 @@ const dkey = (d=new Date()) => d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d
 const T = () => dkey();
 const parseD = k => { const [y,m,d] = k.split('-').map(Number); return new Date(y,m-1,d); };
 const addDays = (k,n) => { const d = parseD(k); d.setDate(d.getDate()+n); return dkey(d); };
+/* «Вчера / Сегодня / Завтра» в «Плане на сегодня»: от локальной даты устройства — T() (dkey берёт год, месяц и день
+   по местному времени, без UTC), выбранный день: −1 вчера, 0 сегодня, +1 завтра; после полуночи «Сегодня» само станет новым днём */
+const PD = () => addDays(T(), UI.pday || 0);
 const weekStart = k => { const d = parseD(k); d.setDate(d.getDate()-((d.getDay()+6)%7)); return dkey(d); };
 const uid = () => Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -781,6 +791,7 @@ function persist(){
 function save(){ persist(); render(); }
 
 const UI = {
+  pday:0, /* день в «Плане на сегодня»: −1 вчера, 0 сегодня, +1 завтра */
   btab:'ideas', bplat:'all', bweek:weekStart(T()), bmonth:T().slice(0,7),
   jtab:'write', jf:'all', calSel:null, calRef:null, calMonth:false, calOpen:calOpenGet(), stab:'courses', mod:null, hwf:'open', jq:'', jweek:weekStart(T()), jprompt:rand(PROMPTS.free),
   hsel:null, hmonth:T().slice(0,7),
@@ -886,24 +897,27 @@ function tabs(list, cur, action){
    ГЛАВНАЯ
    ========================================================= */
 function vHome(){
-  const t = T(), dy = day(t), h = new Date().getHours();
+  /* p — выбранный в плане день (план, настроение, энергия, главное дело, итог дня); t — сегодня: привычки и фокус как раньше */
+  const t = T(), p = PD(), dy = day(p), h = new Date().getHours();
   const greet = h<5 ? 'Доброй ночи' : h<12 ? 'Доброе утро' : h<18 ? 'Добрый день' : 'Добрый вечер';
   const dateStr = cap(new Date().toLocaleDateString('ru-RU',{weekday:'long', day:'numeric', month:'long', year:'numeric'}));
-  const tt = S.tasks.filter(x => x.date===t), done = tt.filter(x => x.done).length;
+  const tt = S.tasks.filter(x => x.date===p), done = tt.filter(x => x.done).length;
   const wk = weekStart(t), we = addDays(wk,6);
   const fw = S.focus.filter(f => f.date>=wk && f.date<=we);
   const fwMin = fw.reduce((a,f) => a+f.min, 0);
   const hNeed = S.habits.filter(x => hNeededToday(x,t));
   const hd = hNeed.filter(x => hDone(t,x.id)).length;
   const best = Math.max(0, ...S.habits.map(hStreak));
-  const overdue = S.tasks.filter(x => !x.done && x.date<t);
+  /* «Не сделано с прошлых дней» — как раньше, только в режиме «Сегодня» */
+  const overdue = UI.pday ? [] : S.tasks.filter(x => !x.done && x.date<p);
 
-  const brief = tt.length ? `На сегодня ${tt.length} ${plural(tt.length,'задача','задачи','задач')}${tt.length-done ? `, осталось ${tt.length-done}` : ' — всё сделано ✨'}` : 'План на сегодня пока пуст';
+  const on = ['На вчера','На сегодня','На завтра'][(UI.pday||0)+1];
+  const brief = tt.length ? `${on} ${tt.length} ${plural(tt.length,'задача','задачи','задач')}${tt.length-done ? `, осталось ${tt.length-done}` : ' — всё сделано ✨'}` : 'План на сегодня пока пуст';
   /* верх: приветствие + настрой дня (энергия, настроение, главное дело) и прежние карточки статистики;
      сразу под ним — «План на сегодня»; таймер фокуса — в самом низу */
   return `<section class="hero home-hero">
       <div class="hh-l"><div class="hero-k">Главная</div><h1>${greet}, ${esc(S.name)}!</h1><p class="hero-sub">${dateStr}</p><p class="hh-brief">${brief}</p></div>
-      <div class="hh-r">${dayMoodHtml(dy)}</div>
+      <div class="hh-r">${dayMoodHtml(dy, p)}</div>
       <div class="stats">${[[`${done}/${tt.length}`,'задач сделано'], [fmtMin(fwMin),'в фокусе за неделю'], [`${hd}/${hNeed.length}`,'привычек сегодня'], [`${best} 🔥`,'лучшая серия']]
         .map(([v,l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
     </section><div class="grid">
@@ -916,12 +930,13 @@ function vHome(){
 }
 
 /* энергия, настроение и главное дело — компактно внутри верхней секции; те же поля и действия, что были в «Старте дня» */
-function dayMoodHtml(dy){
-  const scale = (f, emo) => `<div class="scale">${[1,2,3,4,5].map(n => `<button data-a="setDay" data-f="${f}" data-v="${n}" class="${dy[f]===n?'on':''}" aria-label="${f==='energy' ? 'Энергия' : 'Настроение'} ${n}">${emo ? MOODS[n-1] : n}</button>`).join('')}</div>`;
+function dayMoodHtml(dy, k){
+  k = k || PD();
+  const scale = (f, emo) => `<div class="scale">${[1,2,3,4,5].map(n => `<button data-a="setDay" data-f="${f}" data-v="${n}" data-d="${k}" class="${dy[f]===n?'on':''}" aria-label="${f==='energy' ? 'Энергия' : 'Настроение'} ${n}">${emo ? MOODS[n-1] : n}</button>`).join('')}</div>`;
   return `<div class="dm-row"><span class="lbl">Энергия</span>${scale('energy', false)}</div>
     <div class="dm-row"><span class="lbl">Настроение</span>${scale('mood', true)}</div>
-    <div class="dm-main"><button class="chk ${dy.mainDone?'on':''}" data-a="mainDone" title="Главное дело сделано" aria-label="Главное дело сделано"></button>
-      <input data-c="mainTask" value="${esc(dy.main)}" placeholder="Одно главное дело дня…" aria-label="Одно главное дело дня"></div>`;
+    <div class="dm-main"><button class="chk ${dy.mainDone?'on':''}" data-a="mainDone" data-d="${k}" title="Главное дело сделано" aria-label="Главное дело сделано"></button>
+      <input data-c="mainTask" data-d="${k}" value="${esc(dy.main)}" placeholder="Одно главное дело дня…" aria-label="Одно главное дело дня"></div>`;
 }
 function timerHtml(fw, fwMin){
   const tm = S.timer, running = tm && tm.running;
@@ -956,17 +971,20 @@ function taskRow(x){
     <span class="drag" tabindex="0" role="button" aria-label="Перетащить задачу: ${esc(x.text)}" title="Перетащить (или ↑/↓)"><i></i></span>
     <button class="chk ${x.done?'on':''}" data-a="taskToggle" data-id="${x.id}"></button>${x.hwId ? '<span class="cal-slot" title="Домашнее задание из курса">📚</span>' : ''}
     <span class="tt" data-a="taskEdit" data-id="${x.id}" title="Изменить">${esc(x.text)}</span>
-    <button class="ic" title="Перенести на завтра" data-a="taskMove" data-id="${x.id}">→</button>
+    <button class="ic" title="Перенести на следующий день" data-a="taskMove" data-id="${x.id}">→</button>
     <button class="ic" title="Удалить" data-a="taskDel" data-id="${x.id}">×</button>
   </div>`;
 }
 
 function planHtml(tt, overdue){
-  const tomorrow = S.tasks.filter(x => x.date===addDays(T(),1)).length;
-  return `<div class="ch"><h2>План на сегодня</h2><span class="muted sm">→ переносит задачу на завтра${tomorrow ? ` · на завтра уже ${tomorrow}` : ''}</span></div>
+  const p = PD(), next = S.tasks.filter(x => x.date===addDays(p,1)).length;
+  return `<div class="ch"><h2>План на сегодня</h2><div class="dsw" role="group" aria-label="День плана">${[[-1,'Вчера'],[0,'Сегодня'],[1,'Завтра']].map(([v,l]) =>
+      `<button class="${(UI.pday||0)===v ? 'on' : ''}" data-a="planDay" data-v="${v}" aria-pressed="${(UI.pday||0)===v}">${l}</button>`).join('')}
+    <span class="dsw-d">${fmtD(p, {weekday:'short', day:'numeric', month:'long'})}</span></div></div>
+  <p class="muted sm plan-hint">→ переносит задачу на следующий день${next ? ` · на ${fmtD(addDays(p,1), {day:'numeric', month:'short'})} уже ${next}` : ''}</p>
   ${overdue.length ? `<div class="note">Не сделано с прошлых дней: ${overdue.length} <button class="btn sm ghost" data-a="pullOverdue">Забрать на сегодня</button></div>` : ''}
   <div class="slots">${SLOTS.map(([k,l]) => {
-    const items = tt.filter(x => x.slot===k), evs = (travelEvents()[T()] || []).filter(e => evSlot(e)===k);
+    const items = tt.filter(x => x.slot===k), evs = (travelEvents()[p] || []).filter(e => evSlot(e)===k);
     /* те же события, что в «Моём календаре» на сегодня: только показ, без копий; порядок — как в календаре */
     /* ручной порядок = место задачи в S.tasks (синхронизируется через order|tasks); невыполненные всегда выше выполненных */
     const rows = items.map(x => ({key:TASK_KEY[k], rank:x.done ? 21 : 20, i:S.tasks.indexOf(x), html:taskRow(x)}))
@@ -974,7 +992,7 @@ function planHtml(tt, overdue){
       .sort((a,b) => a.key.localeCompare(b.key) || a.rank-b.rank || a.i-b.i);
     return `<div class="slot"><div class="slot-h">${l}<span class="muted sm">${items.filter(x=>x.done).length}/${items.length}</span></div>
       ${rows.length ? rows.map(v => v.html).join('') : '<p class="empty sm">Пока нет задач</p>'}
-      <div class="addrow"><input data-newtask="${k}" data-enter="taskAdd" data-slot="${k}" placeholder="Новая задача…"><button class="ic plus" data-a="taskAdd" data-slot="${k}">+</button></div>
+      <div class="addrow"><input data-newtask="${k}" data-enter="taskAdd" data-slot="${k}" data-d="${p}" placeholder="Новая задача…"><button class="ic plus" data-a="taskAdd" data-slot="${k}" data-d="${p}">+</button></div>
     </div>`;
   }).join('')}</div>`;
 }
@@ -1072,11 +1090,11 @@ function reviewHtml(dy, tt, h){
   const undone = tt.filter(x => !x.done);
   return `<div class="ch"><h2>Итог дня</h2><span class="muted sm">${h>=18 ? '🌙 самое время подвести итог' : 'заполняется вечером'}</span></div>
   <div class="lbl" style="margin-top:0">Что получилось</div>
-  <textarea data-c="rDone" rows="3">${esc(dy.rDone)}</textarea>
+  <textarea data-c="rDone" data-d="${PD()}" rows="3">${esc(dy.rDone)}</textarea>
   <div class="lbl">Что перенести</div>
-  <textarea data-c="rMove" rows="2">${esc(dy.rMove)}</textarea>
-  ${undone.length ? `<div class="note">Незавершённых задач: ${undone.length}<button class="btn sm" data-a="moveUndone">Перенести на завтра</button></div>`
-    : `<p class="muted sm">${tt.length ? 'Все задачи на сегодня закрыты ✨' : 'На сегодня задач нет.'}</p>`}
+  <textarea data-c="rMove" data-d="${PD()}" rows="2">${esc(dy.rMove)}</textarea>
+  ${undone.length ? `<div class="note">Незавершённых задач: ${undone.length}<button class="btn sm" data-a="moveUndone" data-d="${PD()}">Перенести на следующий день</button></div>`
+    : `<p class="muted sm">${tt.length ? 'Все задачи этого дня закрыты ✨' : 'На этот день задач нет.'}</p>`}
   ${finishHtml()}`;
 }
 
@@ -1825,19 +1843,20 @@ const ACT = {
   settings: () => openSettings(),
 
   /* главная */
-  setDay: d => { const x = day(T()); x[d.f] = x[d.f]===+d.v ? 0 : +d.v; save(); },
-  mainDone: () => { const x = day(T()); x.mainDone = !x.mainDone; save(); },
+  setDay: d => { const x = day(d.d || PD()); x[d.f] = x[d.f]===+d.v ? 0 : +d.v; save(); },
+  mainDone: d => { const x = day(d.d || PD()); x.mainDone = !x.mainDone; save(); },
   taskToggle: d => { const t = byId(S.tasks,d.id); if(t){ t.done = !t.done; hwFromTask(t); save(); } },
-  taskMove: d => { const t = byId(S.tasks,d.id); if(t){ t.date = addDays(T(),1); t.done = false; save(); toast('Перенесено на завтра'); } },
+  taskMove: d => { const t = byId(S.tasks,d.id); if(t){ t.date = addDays(t.date,1); t.done = false; save(); toast(`Перенесено на ${fmtD(t.date, {day:'numeric', month:'long'})}`); } },
+  planDay: d => { UI.pday = Math.max(-1, Math.min(1, +d.v || 0)); render(); },
   taskDel: d => { del(S.tasks,d.id); save(); },
   taskEdit: d => { const t = byId(S.tasks,d.id); if(!t) return;
     openForm({title:'Задача', values:t, fields:[{k:'text', label:'Задача', req:true}, {k:'slot', label:'Когда', type:'select', options:SLOTS, half:1}, {k:'date', label:'Дата', type:'date', half:1}, {k:'done', label:'Сделано', type:'check'}],
       onSave: v => { Object.assign(t,v); hwFromTask(t); }, onDelete: () => del(S.tasks,t.id)}); },
   taskAdd: d => { const inp = document.querySelector(`[data-newtask="${d.slot}"]`), v = inp.value.trim(); if(!v) return;
-    S.tasks.push({id:uid(), date:T(), slot:d.slot, text:v, done:false}); save();
+    S.tasks.push({id:uid(), date:d.d || PD(), slot:d.slot, text:v, done:false}); save();
     const ni = document.querySelector(`[data-newtask="${d.slot}"]`); if(ni) ni.focus(); },
   pullOverdue: () => { S.tasks.forEach(t => { if(!t.done && t.date<T()) t.date = T(); }); save(); toast('Задачи перенесены на сегодня'); },
-  moveUndone: () => { let n = 0; S.tasks.forEach(t => { if(t.date===T() && !t.done){ t.date = addDays(T(),1); n++; } }); save(); toast(`Перенесено на завтра: ${n}`); },
+  moveUndone: d => { let n = 0; const k = d.d || PD(); S.tasks.forEach(t => { if(t.date===k && !t.done){ t.date = addDays(k,1); n++; } }); save(); toast(`Перенесено на ${fmtD(addDays(k,1), {day:'numeric', month:'long'})}: ${n}`); },
   tDur: d => { if(S.timer) return; S.timerCfg.dur = +d.v; save(); },
   tStart: () => { if(!S.timer) S.timer = {section:S.timerCfg.section, dur:S.timerCfg.dur, acc:0, start:Date.now(), running:true};
     else if(!S.timer.running){ S.timer.running = true; S.timer.start = Date.now(); } save(); },
@@ -2047,9 +2066,9 @@ const ACT = {
 
 /* ---------- изменения в полях ---------- */
 const CH = {
-  mainTask: v => { day(T()).main = v; persist(); },
-  rDone: v => { day(T()).rDone = v; persist(); },
-  rMove: v => { day(T()).rMove = v; persist(); },
+  mainTask: (v,d) => { day(d.d || PD()).main = v; persist(); },
+  rDone: (v,d) => { day(d.d || PD()).rDone = v; persist(); },
+  rMove: (v,d) => { day(d.d || PD()).rMove = v; persist(); },
   tSection: v => { S.timerCfg.section = v; persist(); },
   jSearch: v => { UI.jq = v.trim(); render(); },
   wThoughts: (v,d) => { (S.weekly[d.w] = S.weekly[d.w] || {}).thoughts = v; persist(); },
@@ -2963,10 +2982,11 @@ function showStop(id){
 
 /* ---------- отчёт дня: дата отчёта и дата переноса выбираются явно ---------- */
 function finishHtml(){
-  const r = reportOf(T());
+  const k = PD(), r = reportOf(k);
+  if(k > T()) return `<p class="muted sm" style="margin-top:12px">Этот день ещё не наступил — завершить его можно будет потом.</p>`;
   return `<div class="row gap" style="margin-top:12px">${r && !r.reopened
-    ? `<span class="badge tt">✓ День завершён</span><button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">Открыть отчёт</button><button class="btn sm ghost" data-a="dayReopen" data-id="${r.id}">↺ Открыть день снова</button><button class="btn sm ghost" data-a="dayFinish">Другой день…</button>`
-    : `<button class="btn" data-a="dayFinish">${r ? 'Завершить снова' : 'Завершить день'}</button><span class="muted sm">${r ? '↺ день открыт снова — отчёт обновится, прежний снимок останется в истории' : 'дату отчёта и дату переноса задач выберешь в окне'}</span>`}</div>`;
+    ? `<span class="badge tt">✓ День завершён</span><button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">Открыть отчёт</button><button class="btn sm ghost" data-a="dayReopen" data-id="${r.id}">↺ Открыть день снова</button><button class="btn sm ghost" data-a="dayFinish" data-v="${k}">Другой день…</button>`
+    : `<button class="btn" data-a="dayFinish" data-v="${k}">${r ? 'Завершить снова' : 'Завершить день'}</button><span class="muted sm">${r ? '↺ день открыт снова — отчёт обновится, прежний снимок останется в истории' : 'дату отчёта и дату переноса задач выберешь в окне'}</span>`}</div>`;
 }
 /* кнопки для даты в календаре: отчёт, открыть снова, запись дня, завершить */
 function dayButtons(k){
@@ -4015,6 +4035,13 @@ function render(){
 
 /* перерисовка главной раз в минуту (приветствие, смена дня) */
 let lastDay = T();
+/* PWA могла «спать»: при возвращении сразу перерисовываем, если наступил новый день */
+['visibilitychange','pageshow','focus'].forEach(ev => (ev==='visibilitychange' ? document : window).addEventListener(ev, () => {
+  if(document.visibilityState==='hidden' || T()===lastDay) return;
+  lastDay = T();
+  const active = document.activeElement;
+  if(view==='home' && !document.getElementById('modalRoot').innerHTML && !(active && /INPUT|TEXTAREA|SELECT/.test(active.tagName))) render();
+}));
 setInterval(() => {
   if(T()!==lastDay) lastDay = T();
   const active = document.activeElement;
