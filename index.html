@@ -171,8 +171,15 @@ body.dragging-task,body.dragging-task *{cursor:grabbing!important;-webkit-user-s
 @media(max-width:760px){.hstats{grid-template-columns:1fr 1fr}}
 
 /* ---------- блог ---------- */
-.kanban{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(250px,1fr);gap:14px;overflow-x:auto;padding-bottom:10px}
-.kcol{background:rgba(255,255,255,.5);border-radius:24px;padding:12px;min-width:0}
+.kanban{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(250px,1fr);gap:14px;overflow-x:auto;padding-bottom:10px;align-items:stretch}
+/* высота доски ограничена (не больше ~620px), все колонки одной высоты; длинный список прокручивается внутри колонки */
+.kcol{background:rgba(255,255,255,.5);border-radius:24px;padding:12px;min-width:0;display:flex;flex-direction:column;max-height:620px}
+.kcol .kh{flex:none}
+.klist{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-anchor:none;overflow-x:hidden;margin:0 -8px;padding:4px 8px 2px;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:rgba(31,58,18,.18) transparent}
+.klist::-webkit-scrollbar{width:6px}
+.klist::-webkit-scrollbar-thumb{background:rgba(31,58,18,.18);border-radius:6px}
+.kcol .kadd{flex:none;margin-top:4px}
+@media(max-width:760px){.kcol{max-height:min(620px, calc(100dvh - 190px))}}
 .kh{display:flex;justify-content:space-between;align-items:center;margin:2px 4px 10px;color:var(--green)}
 .cnt{background:#fff;border-radius:99px;padding:1px 10px;font-weight:800;font-size:13px}
 .icard{background:#fff;border-radius:18px;padding:13px;box-shadow:0 4px 14px rgba(31,58,18,.06);margin-bottom:10px;cursor:pointer;transition:.15s}
@@ -1168,9 +1175,10 @@ function blogIdeas(){
   const list = S.ideas.filter(i => pf==='all' || (i.platform||'').includes(pf));
   return (S.ideas.length ? '' : `<div class="card mb"><p class="empty">Пока нет идей</p><button class="btn sm" data-a="ideaNew" style="margin-top:8px">+ Добавить идею</button></div>`)
   + `<div class="chips mb">${[['all','Все площадки'],['Instagram','Instagram'],['TikTok','TikTok']].map(([v,l]) => `<button class="chip ${pf===v?'on':''}" data-a="bPlat" data-v="${v}">${l}</button>`).join('')}</div>
-  <div class="kanban">${STATUSES.map((st,si) => { const its = list.filter(i => i.status===st);
+  <div class="kanban" data-keep-scroll="kanban">${STATUSES.map((st,si) => { const its = list.filter(i => i.status===st);
+    /* шапка и «+ добавить» всегда на виду; карточки прокручиваются внутри колонки */
     return `<div class="kcol" data-st="${st}"><div class="kh"><b>${cap(st)}</b><span class="cnt">${its.length}</span></div>
-      ${its.map(i => ideaCard(i,si)).join('')}
+      <div class="klist" data-keep-scroll="kl-${st}">${its.map(i => ideaCard(i,si)).join('')}</div>
       <button class="kadd" data-a="ideaNew" data-status="${st}">+ добавить</button></div>`; }).join('')}</div>`;
 }
 
@@ -2294,12 +2302,13 @@ function kMove(){
   const hit = document.elementFromPoint(d.x, d.y), col = hit && hit.closest && hit.closest('.kanban .kcol');
   document.querySelectorAll('.kcol.kdrop').forEach(c => { if(c!==col) c.classList.remove('kdrop'); });
   if(!col) return;
-  col.classList.add('kdrop');
-  const cards = [...col.querySelectorAll('.icard')].filter(c => c!==d.card);
-  const before = cards.find(c => { const r = c.getBoundingClientRect(); return d.y < r.top + r.height/2; }) || col.querySelector('.kadd');
-  if(d.ph.nextSibling!==before || d.ph.parentNode!==col){
+  col.classList.add('kdrop'); d.col = col;
+  const lst = col.querySelector('.klist') || col;
+  const cards = [...lst.querySelectorAll('.icard')].filter(c => c!==d.card);
+  const before = cards.find(c => { const r = c.getBoundingClientRect(); return d.y < r.top + r.height/2; }) || null;
+  if(d.ph.nextSibling!==before || d.ph.parentNode!==lst){
     const old = d.ph.getBoundingClientRect();
-    col.insertBefore(d.ph, before);
+    lst.insertBefore(d.ph, before);
     /* место для карточки плавно «раскрывается» */
     if(d.ph.animate && Math.abs(old.top - d.ph.getBoundingClientRect().top) > 2) d.ph.animate([{opacity:.2, transform:'scaleY(.6)'}, {opacity:1, transform:'none'}], {duration:140, easing:'ease-out'});
   }
@@ -2307,6 +2316,13 @@ function kMove(){
 function kAuto(){
   const d = KD; if(!d || !d.on) return;
   const kb = document.querySelector('.kanban'); let moved = false;
+  /* колонка с длинным списком прокручивается, когда карточку подносят к её верхнему или нижнему краю */
+  const lst = d.col && d.col.isConnected && d.col.querySelector('.klist');
+  if(lst && lst.scrollHeight > lst.clientHeight + 1){ const r = lst.getBoundingClientRect(), e = 44;
+    if(d.x >= r.left && d.x <= r.right){
+      const v = d.y < r.top + e && d.y > r.top - 30 ? -Math.ceil((r.top + e - d.y)/3) : d.y > r.bottom - e && d.y < r.bottom + 30 ? Math.ceil((d.y - r.bottom + e)/3) : 0;
+      /* чем дольше карточку держат у края, тем быстрее (до ×3) — длинный список пролистывается быстро */
+      if(v){ d.edgeT = d.edgeT || performance.now(); const k = 1 + Math.min(2, (performance.now() - d.edgeT)/700); const b = lst.scrollTop; lst.scrollTop += Math.round(v*k); moved = moved || lst.scrollTop!==b; } else d.edgeT = 0; } else d.edgeT = 0; }
   if(kb){ const r = kb.getBoundingClientRect(), e = 48;
     const v = d.x < r.left + e ? -Math.ceil((r.left + e - d.x)/3) : d.x > r.right - e ? Math.ceil((d.x - r.right + e)/3) : 0;
     if(v){ const b = kb.scrollLeft; kb.scrollLeft += v; moved = moved || kb.scrollLeft!==b; } }
@@ -4355,7 +4371,10 @@ window.addEventListener('hashchange', () => { const v = location.hash.slice(1); 
 function render(){
   if(DRAG && DRAG.on){ DRAG.pending = true; return; } /* во время перетаскивания не перерисовываем — после отпускания */
   if(KD && KD.on){ KD.pending = true; return; }
+  /* прокрутка доски и колонок не сбрасывается после сохранения (например, после перетаскивания карточки) */
+  const keep = {}; document.querySelectorAll('#app [data-keep-scroll]').forEach(el => { keep[el.dataset.keepScroll] = [el.scrollLeft, el.scrollTop]; });
   document.getElementById('app').innerHTML = VIEWS[view]();
+  document.querySelectorAll('#app [data-keep-scroll]').forEach(el => { const k = keep[el.dataset.keepScroll]; if(k){ el.scrollLeft = k[0]; el.scrollTop = k[1]; } });
   document.getElementById('nav').innerHTML = NAV.map(([k,l,s,i]) =>
     `<button class="${k===view?'on':''}" data-a="nav" data-v="${k}"><span class="ico">${i}</span><span class="nl">${l}</span><span class="ns">${s}</span></button>`).join('');
 }
