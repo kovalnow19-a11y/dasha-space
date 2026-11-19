@@ -451,6 +451,17 @@ a.btn{text-decoration:none;display:inline-block}
 .cd.rep::after{content:'✓';position:absolute;top:2px;right:5px;font-size:10px;font-weight:800;color:#3c7a1c}
 .cd.sel.rep::after{color:var(--lime)}
 .cal-day{margin-top:14px;background:#f7f9f4;border-radius:22px;padding:14px 16px}
+.cd-dots i.tv{border-radius:2px;transform:rotate(45deg);background:var(--green);width:5px;height:5px;margin-left:2px}
+.cd.sel .cd-dots i.tv{background:#fff}
+.cd.nt::before{content:'';position:absolute;left:9px;right:9px;bottom:3px;height:3px;border-radius:3px;background:#dcc6e1}
+.cd.sel.nt::before{background:var(--lilac)}
+.cal-leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);font-weight:600;margin-top:8px}
+.cal-leg i.lg{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--lime);margin-right:5px;vertical-align:0}
+.cal-leg i.lg.tv{border-radius:2px;transform:rotate(45deg);background:var(--green);width:6px;height:6px}
+.cal-leg i.lg.nt{width:14px;height:3px;border-radius:3px;background:#dcc6e1;vertical-align:2px}
+.cal-day .tev{margin:6px 0}
+.stay.mini{padding:5px 12px;font-size:13px;background:transparent}
+.stop.flash{background:#f6eef8;border-radius:14px;box-shadow:0 0 0 6px #f6eef8}
 .cal-day .task{border-bottom-color:#e9ede4}
 .cal-slot{flex:none;font-size:14px}
 .cal-add select{width:auto;flex:none;padding:8px 10px;border-radius:14px}
@@ -1760,7 +1771,10 @@ const ACT = {
   repOpen: d => openReport(d.id),
   repEdit: d => editReport(d.id),
   repCarry: d => openCarry(d.id),
-  carryTog: (d, el) => { if(!el.classList.contains('dis')) el.classList.toggle('on'); },
+  carryTog: (d, el) => { if(el.classList.contains('dis')) return; el.classList.toggle('on'); const pk = FIN ? FIN.pick : CARRYR ? CARRYR.pick : null; if(pk) pk[d.n] = el.classList.contains('on'); },
+  finSave: () => finSave(),
+  tvTrip: d => { if(!byId(S.trips, d.id)) return; UI.trip = d.id; UI.ttab = 'route'; go('travel'); },
+  tvStop: d => showStop(d.id),
   carryGo: d => carryCreate(d.id),
   jNew: d => openEntry(null, d.type),
   jOpen: d => openEntry(d.id),
@@ -1997,7 +2011,7 @@ function dayCard(t, g, isToday){
     <div class="ch"><div><h2>${g.title}</h2><div class="day-sub">${isToday ? 'Сегодня · ' : ''}${g.sub}</div>${swap ? '<span class="swap-b">🔄 Смена жилья</span>' : ''}</div>
       <button class="btn sm ghost" data-a="stopNew" data-trip="${t.id}" data-day="${g.day}">+ Остановка</button></div>
     ${all.length ? `<div class="stays">${all.map(e => e.seg ? flightLine(e) : stayLine(e)).join('')}</div>` : ''}
-    ${list.map((x,i) => `<div class="stop">
+    ${list.map((x,i) => `<div class="stop" id="stop-${x.id}">
       <div class="stop-time ${x.time?'':'none'}">${x.time ? esc(x.time) : '—'}</div>
       <div class="stop-b" data-a="stopEdit" data-id="${x.id}">
         <b>${esc(x.name || 'Без названия')}</b>
@@ -2513,7 +2527,8 @@ function stayLine(e){
 /* открыть бронирование: вкладка «Документы», прокрутка к нему и подсветка */
 function showDoc(id){
   const x = byId(S.docs, id); if(!x) return;
-  UI.trip = x.tripId; UI.ttab = 'docs'; UI.dcat = 'all'; render();
+  UI.trip = x.tripId; UI.ttab = 'docs'; UI.dcat = 'all';
+  if(view!=='travel') go('travel'); else render();
   const el = $id('doc-'+id); if(!el) return;
   el.scrollIntoView({behavior:'smooth', block:'center'}); el.classList.add('flash');
   setTimeout(() => el.classList.remove('flash'), 2200);
@@ -2542,62 +2557,193 @@ function calRange(){
   for(let k = weekStart(m1); k<=addDays(weekStart(last),6); k = addDays(k,1)) out.push(k);
   return {days:out, month:m1.slice(0,7)};
 }
+/* события Travel Planner для календаря: каждый раз вычисляются из поездок, рейсов, броней, документов и остановок —
+   в S.tasks не копируются и отдельно в Supabase не сохраняются */
+function travelEvents(){
+  const out = {}, add = (d, e) => { if(d) (out[d] = out[d] || []).push(e); };
+  S.trips.forEach(t => {
+    const tn = t.title || 'Поездка';
+    if(t.start) add(t.start, {type:'tstart', time:'', icon:'🧳', label:'Начало поездки', title:tn, act:'tvTrip', id:t.id});
+    if(t.end && t.end!==t.start) add(t.end, {type:'tend', time:'', icon:'🏁', label:'Конец поездки', title:tn, act:'tvTrip', id:t.id});
+    Object.entries(flightEvents(t)).forEach(([d, l]) => l.forEach(e => { const f = e.seg, dep = e.type==='dep', nm = segName(f);
+      add(d, {type:e.type, time:e.time, icon: dep ? '🛫' : '🛬', label: dep ? 'Вылет' : 'Прилёт', act:'flightsOpen', id:e.doc.id,
+        title:(dep ? `${f.from||'?'}${f.fromCity ? ' '+f.fromCity : ''} → ${f.to||'?'}` : `${f.to||'?'}${f.toCity ? ' '+f.toCity : ''}`)+(nm ? ' · '+nm : '')}); }));
+    Object.entries(stayEvents(t)).forEach(([d, l]) => {
+      l.forEach(e => add(d, {type:e.type, time:e.time||'', icon:{in:'🔑', out:'🧳', stay:'🏨'}[e.type], label:{in:'Заселение', out:'Выезд', stay:'Проживание'}[e.type],
+        title:e.doc.title || 'Жильё', act:'stayOpen', id:e.doc.id, compact:e.type==='stay'}));
+      if(l.some(e => e.type==='out') && l.some(e => e.type==='in')) add(d, {type:'swap', time:'', icon:'🔄', label:'Смена жилья', title:'', act:'tvTrip', id:t.id, compact:true});
+    });
+    S.stops.filter(x => x.tripId===t.id && x.day).forEach(x => add(x.day, {type:'stop', time:x.time||'', icon:'📍', label:'Остановка', title:x.name || 'Без названия', act:'tvStop', id:x.id}));
+    tripDocs(t).filter(x => x.date && docCatOf(x.cat)[0]!=='stay' && !(isFlightDoc(x) && (x.flights||[]).length)).forEach(x => { const c = docCatOf(x.cat);
+      add(x.date, {type:'doc', time:'', icon:c[1], label:c[2], title:x.title || 'Документ', act:'stayOpen', id:x.id}); });
+  });
+  return out;
+}
+/* порядок в списке дня: по времени; без времени — по смыслу (только для порядка, на экране время не выдумывается) */
+const EV_KEY = {tstart:'00:00', swap:'00:00', stay:'00:00', out:'00:01', doc:'00:02', stop:'23:50', dep:'23:57', arr:'23:58', in:'23:59', tend:'23:59'};
+const EV_RANK = {tstart:0, swap:1, stay:2, out:3, doc:4, dep:5, arr:6, stop:7, in:8, tend:9};
+const TASK_KEY = {morning:'06:00', day:'12:00', evening:'18:00'};
+function evRow(e){
+  const btn = (txt) => `<button class="stay-h" data-a="${e.act}" data-id="${e.id}">${esc(txt)}</button>`;
+  return `<div class="stay tev ${e.type}${e.compact ? ' mini' : ''}"><span class="stay-i">${e.icon}</span><div class="stay-b">${e.title ? `<span class="stay-l">${e.label}:</span> ${btn(e.title)}` : btn(e.label)}${e.time ? `<span class="stay-t">${esc(e.time)}</span>` : ''}</div></div>`;
+}
 function calHtml(){
-  const t = T(), sel = calSelDate(), {days, month} = calRange(), byDate = {};
+  const t = T(), sel = calSelDate(), {days, month} = calRange(), byDate = {}, tev = travelEvents();
   S.tasks.forEach(x => { (byDate[x.date] = byDate[x.date] || []).push(x); });
   const title = month ? cap(parseD(month+'-01').toLocaleDateString('ru-RU', {month:'long', year:'numeric'}))
     : days[0].slice(5,7)===days[6].slice(5,7) ? +days[0].slice(8)+' — '+fmtD(days[6], {day:'numeric', month:'long'})
     : fmtD(days[0], {day:'numeric', month:'short'})+' — '+fmtD(days[6], {day:'numeric', month:'short'});
   const cell = k => { const l = byDate[k] || [], dn = l.filter(x => x.done).length, op = l.length-dn;
-    const dots = '<i class="on"></i>'.repeat(Math.min(dn,3)) + '<i></i>'.repeat(Math.min(op, Math.max(0, 3-Math.min(dn,3)))) + (l.length>3 ? '<b>+</b>' : '');
-    const cls = [k===t ? 'today' : '', k===sel ? 'sel' : '', month && k.slice(0,7)!==month ? 'out' : '', reportOf(k) ? 'rep' : ''].join(' ');
-    const lab = `${fmtD(k, {day:'numeric', month:'long'})}: задач ${l.length}${dn ? ', выполнено '+dn : ''}${reportOf(k) ? ', день завершён' : ''}`;
+    const ev = tev[k] || [], evN = ev.filter(e => !e.compact).length, night = ev.some(e => e.type==='stay');
+    const dots = '<i class="on"></i>'.repeat(Math.min(dn,3)) + '<i></i>'.repeat(Math.min(op, Math.max(0, 3-Math.min(dn,3)))) + (l.length>3 ? '<b>+</b>' : '') + (evN ? '<i class="tv"></i>' : '');
+    const cls = [k===t ? 'today' : '', k===sel ? 'sel' : '', month && k.slice(0,7)!==month ? 'out' : '', reportOf(k) ? 'rep' : '', night ? 'nt' : ''].join(' ');
+    const lab = `${fmtD(k, {day:'numeric', month:'long'})}: задач ${l.length}${dn ? ', выполнено '+dn : ''}${evN ? ', событий поездок '+evN : ''}${night ? ', проживание' : ''}${reportOf(k) ? ', день завершён' : ''}`;
     return `<button class="cd ${cls}" data-a="calPick" data-v="${k}" title="${lab}" aria-label="${lab}"><span>${+k.slice(8)}</span><span class="cd-dots">${dots}</span></button>`; };
   return `<div class="ch"><h2>Мой календарь</h2>
       <div class="cal-nav"><button class="ic" data-a="calPrev" title="${month ? 'Предыдущий месяц' : 'Предыдущая неделя'}">‹</button><span class="cal-t">${title}</span><button class="ic" data-a="calNext" title="${month ? 'Следующий месяц' : 'Следующая неделя'}">›</button>
       ${sel!==t || UI.calRef ? '<button class="btn sm ghost" data-a="calToday">Сегодня</button>' : ''}<button class="btn sm ghost" data-a="calMode">${month ? 'Неделя' : 'Весь месяц'}</button></div></div>
     <div class="mcal">${WD.map(w => `<div class="calh">${w}</div>`).join('')}${days.map(cell).join('')}</div>
-    ${calDayPanel(sel)}`;
+    <div class="cal-leg"><span><i class="lg on"></i>задачи</span><span><i class="lg tv"></i>поездки</span><span><i class="lg nt"></i>проживание</span><span>✓ день завершён</span></div>
+    ${calDayPanel(sel, tev[sel] || [])}`;
 }
-function calDayPanel(k){
-  const ord = {morning:0, day:1, evening:2}, t = T();
-  const items = S.tasks.filter(x => x.date===k).map((x,i) => [x,i]).sort((a,b) => (ord[a[0].slot]??1)-(ord[b[0].slot]??1) || a[1]-b[1]).map(v => v[0]);
-  const r = reportOf(k), dn = items.filter(x => x.done).length;
+function calDayPanel(k, evs){
+  const t = T(), ord = {morning:0, day:1, evening:2};
+  const tasks = S.tasks.filter(x => x.date===k), r = reportOf(k), dn = tasks.filter(x => x.done).length, evN = evs.filter(e => !e.compact).length;
+  const rows = tasks.map((x,i) => ({key:TASK_KEY[x.slot] || '12:00', rank:20+(ord[x.slot]??1), i, html:`<div class="task ${x.done?'done':''}">
+      <button class="chk ${x.done?'on':''}" data-a="taskToggle" data-id="${x.id}" title="Отметить"></button>
+      <span class="cal-slot" title="${(SLOTS.find(v => v[0]===x.slot)||['',''])[1]}">${SLOT_ICO[x.slot]||'•'}</span>
+      <span class="tt" data-a="taskEdit" data-id="${x.id}" title="Изменить">${esc(x.text)}</span>
+      <button class="ic" title="Удалить" data-a="taskDel" data-id="${x.id}">×</button></div>`}))
+    .concat(evs.map((e,i) => ({key:e.time || EV_KEY[e.type] || '12:00', rank:EV_RANK[e.type] ?? 5, i, html:evRow(e)})))
+    .sort((a,b) => a.key.localeCompare(b.key) || a.rank-b.rank || a.i-b.i);
   return `<div class="cal-day">
     <div class="row between gap"><div><b>${cap(fmtD(k, {weekday:'long', day:'numeric', month:'long'}))}</b>${k===t ? ' <span class="badge">сегодня</span>' : ''}
-      <div class="mini">${items.length ? `задач: ${items.length} · выполнено ${dn}` : 'задач нет'}${k===t ? ' · это тот же список, что в «Плане на сегодня»' : ''}</div></div>
+      <div class="mini">${tasks.length ? `задач: ${tasks.length} · выполнено ${dn}` : 'задач нет'}${evN ? ` · событий поездок: ${evN}` : ''}${k===t ? ' · задачи те же, что в «Плане на сегодня»' : ''}</div></div>
       ${r ? `<button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">📝 Отчёт дня</button>` : ''}</div>
-    ${items.map(x => `<div class="task ${x.done?'done':''}">
-      <button class="chk ${x.done?'on':''}" data-a="taskToggle" data-id="${x.id}" title="Отметить"></button>
-      <span class="cal-slot" title="${(SLOTS.find(s => s[0]===x.slot)||['',''])[1]}">${SLOT_ICO[x.slot]||'•'}</span>
-      <span class="tt" data-a="taskEdit" data-id="${x.id}" title="Изменить">${esc(x.text)}</span>
-      <button class="ic" title="Удалить" data-a="taskDel" data-id="${x.id}">×</button></div>`).join('')}
+    ${rows.map(v => v.html).join('')}
     <div class="addrow cal-add"><select data-calslot aria-label="Когда">${SLOTS.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select>
       <input data-caltask data-enter="calTaskAdd" placeholder="Задача на ${fmtD(k, {day:'numeric', month:'short'})}…"><button class="ic plus" data-a="calTaskAdd" title="Добавить">+</button></div>
   </div>`;
 }
+/* открыть остановку в маршруте поездки */
+function showStop(id){
+  const x = byId(S.stops, id); if(!x) return;
+  UI.trip = x.tripId; UI.ttab = 'route';
+  if(view!=='travel') go('travel'); else render();
+  const el = $id('stop-'+id); if(!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'center'}); el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 2200);
+}
 
-/* ---------- отчёт дня ---------- */
+/* ---------- отчёт дня: дата отчёта и дата переноса выбираются явно ---------- */
 function finishHtml(){
   const r = reportOf(T());
   return `<div class="row gap" style="margin-top:12px">${r
-    ? `<span class="badge tt">✓ День завершён</span><button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">Открыть отчёт</button>`
-    : '<button class="btn" data-a="dayFinish">Завершить день</button><span class="muted sm">сохранится снимок отчёта в «Истории дней»</span>'}</div>`;
+    ? `<span class="badge tt">✓ День завершён</span><button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">Открыть отчёт</button><button class="btn sm ghost" data-a="dayFinish">Другой день…</button>`
+    : '<button class="btn" data-a="dayFinish">Завершить день</button><span class="muted sm">дату отчёта и дату переноса задач выберешь в окне</span>'}</div>`;
 }
 /* пункты «Что перенести»: по строкам и через «;», без маркеров списка */
 function moveItems(text){
   return String(text||'').split(/\n|;/).map(v => v.replace(/^\s*(?:[-–—*•·]|\d+[.)])\s*/, '').trim()).filter(Boolean);
 }
 const normText = v => String(v||'').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[.!…]+$/, '');
+const fmtFull = k => fmtD(k, {day:'numeric', month:'long', year:'numeric'});
+let FIN = null, CARRY = null, CARRYR = null;
+/* после полуночи (до 5 утра) по умолчанию предлагаем завершить вчерашний день */
+const finDefaultDate = () => new Date().getHours()<5 ? addDays(T(),-1) : T();
+/* пункты с причиной, почему их нельзя перенести ещё раз */
+function carryList(text, carried, target){
+  const existing = S.tasks.filter(x => x.date===target).map(x => normText(x.text)), seen = [];
+  return moveItems(text).map(t => { const n = normText(t);
+    const why = (carried||[]).some(c => normText(c.text)===n) ? 'уже перенесено' : existing.includes(n) ? 'такая задача уже есть' : seen.includes(n) ? 'повтор' : '';
+    seen.push(n); return {text:t, n, why}; });
+}
+function carryHtml(items, pick){
+  if(!items.length) return '<p class="empty sm">Пунктов нет — напиши их в «Что перенести», по одному в строке.</p>';
+  return items.map((it,i) => { const on = !it.why && (!pick || pick[it.n]!==false);
+    return `<div class="ci ${it.why?'dis':''}"><button class="chk ${it.why?'dis':''} ${on?'on':''}" data-a="carryTog" data-i="${i}" data-n="${esc(it.n)}" ${it.why?'disabled':''}></button><span>${esc(it.text)}</span>${it.why ? `<span class="mini" style="flex:none">${it.why}</span>` : ''}</div>`; }).join('');
+}
+/* создаёт задачи на дату target без дублей и запоминает перенесённое в отчёте */
+function carryInto(r, picked, target, slot){
+  let n = 0; r.carried = r.carried || [];
+  picked.forEach(it => { const nt = normText(it.text);
+    if(S.tasks.some(x => x.date===target && normText(x.text)===nt) || r.carried.some(c => normText(c.text)===nt)) return;
+    const task = {id:uid(), date:target, slot, text:it.text, done:false};
+    S.tasks.push(task); r.carried.push({text:it.text, taskId:task.id, date:target, at:Date.now()}); n++; });
+  return n;
+}
+const pickedItems = () => [...document.querySelectorAll('#carryList .chk.on')].map(b => CARRY && CARRY[+b.dataset.i]).filter(it => it && !it.why);
+const slotSelect = () => `<div class="f half" style="max-width:260px"><span>Когда</span><select id="carrySlot">${SLOTS.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>`;
+
 function finishDay(){
-  const k = T(); if(reportOf(k)){ openReport(reportOf(k).id); return; }
-  if(!confirm('Завершить день? Сохранится снимок: энергия, настроение, главное дело, выполненные задачи и итоги. Его исходный текст потом не меняется.')) return;
-  const dy = day(k), tt = S.tasks.filter(x => x.date===k);
+  const k = finDefaultDate();
+  FIN = {date:k, target:addDays(k,1), targetSet:false, texts:{}, pick:{}};
+  openModal('<h3>Завершить день</h3><div id="finBody"></div>', true);
+  finRender();
+}
+function finText(k){ const d = S.days[k] || {}; return FIN.texts[k] || {rDone:d.rDone||'', rMove:d.rMove||''}; }
+function finRender(){
+  if(!FIN || !$id('finBody')) return;
+  const k = FIN.date, tg = FIN.target, today = T(), d = S.days[k] || {}, live = S.days[today] || {};
+  const tt = S.tasks.filter(x => x.date===k), dn = tt.filter(x => x.done).length, tx = finText(k), ex = reportOf(k);
+  const offerToday = k!==today && !tx.rDone.trim() && !tx.rMove.trim() && ((live.rDone||'').trim() || (live.rMove||'').trim());
+  CARRY = carryList(tx.rMove, ex ? ex.carried : [], tg);
+  $id('finBody').innerHTML = `
+    <div class="fg">
+      <div class="f half"><span>Отчёт за</span><input type="date" id="finDate" value="${k}" max="${today}" onchange="finSet('date', this.value)"></div>
+      <div class="f half"><span>Перенести задачи на</span><input type="date" id="finTarget" value="${tg}" onchange="finSet('target', this.value)"></div>
+    </div>
+    <div class="note" id="finLine">Отчёт за ${fmtFull(k)} → задачи на ${fmtFull(tg)}</div>
+    <div class="rep-k">
+      <div class="hs"><b>${d.energy || '—'}</b><span>энергия</span></div>
+      <div class="hs"><b>${d.mood ? MOODS[d.mood-1] : '—'}</b><span>настроение</span></div>
+      <div class="hs"><b>${dn}/${tt.length}</b><span>задач выполнено</span></div></div>
+    ${(d.main||'').trim() ? `<p class="rep-l">${d.mainDone ? '✅' : '🎯'} ${esc(d.main)}</p>` : ''}
+    <p class="muted sm">Энергия, настроение, главное дело и задачи берутся за ${fmtD(k, {day:'numeric', month:'long'})}.</p>
+    ${offerToday ? `<div class="note">В «Итоге дня» на главной записан текст за ${fmtD(today, {day:'numeric', month:'long'})}. <button class="btn sm ghost" onclick="finUseToday()">Взять его в этот отчёт</button></div>` : ''}
+    <div class="f"><span>Что получилось</span><textarea id="finDone" rows="3" oninput="finKeep()">${esc(tx.rDone)}</textarea></div>
+    <div class="f" style="margin-top:10px"><span>Что перенести (по одному в строке)</span><textarea id="finMove" rows="3" oninput="finKeep(true)">${esc(tx.rMove)}</textarea></div>
+    <div class="lbl" id="finListH">Что перенести → задачи на ${fmtD(tg, {day:'numeric', month:'long'})}</div>
+    <div id="carryList">${carryHtml(CARRY, FIN.pick)}</div>
+    ${slotSelect()}
+    ${ex ? `<div class="fwarn">⚠️ Отчёт за ${fmtFull(k)} уже сохранён. <label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="finOver" style="width:auto"> Перезаписать снимок</label></div>` : ''}
+    <div class="mfoot"><button class="btn ghost" data-a="mclose">Отмена</button><button class="btn" data-a="finSave">Сохранить отчёт</button></div>`;
+}
+function finKeep(list){
+  if(!FIN || !$id('finDone')) return;
+  FIN.texts[FIN.date] = {rDone:$id('finDone').value, rMove:$id('finMove').value};
+  if(list){ const ex = reportOf(FIN.date); CARRY = carryList(FIN.texts[FIN.date].rMove, ex ? ex.carried : [], FIN.target); $id('carryList').innerHTML = carryHtml(CARRY, FIN.pick); }
+}
+function finSet(f, v){
+  if(!FIN) return;
+  finKeep();
+  if(!v){ finRender(); return; }
+  if(f==='date'){
+    if(v>T()){ toast('Этот день ещё не наступил — выбери сегодняшнюю или прошлую дату'); v = T(); }
+    FIN.date = v; if(!FIN.targetSet) FIN.target = addDays(v,1);
+  } else { FIN.target = v; FIN.targetSet = true; }
+  finRender();
+}
+function finUseToday(){ const live = S.days[T()] || {}; FIN.texts[FIN.date] = {rDone:live.rDone||'', rMove:live.rMove||''}; finRender(); }
+function finSave(){
+  if(!FIN) return;
+  finKeep();
+  const k = FIN.date, tg = FIN.target;
+  if(!k || !tg){ toast('Выбери дату отчёта и дату переноса'); return; }
+  if(k>T()){ toast('Этот день ещё не наступил'); return; }
+  const ex = reportOf(k);
+  if(ex && !($id('finOver') || {}).checked){ toast('Отчёт за эту дату уже есть — отметь «Перезаписать снимок»'); return; }
+  const tx = finText(k), dy = day(k); dy.rDone = tx.rDone; dy.rMove = tx.rMove;
+  const tt = S.tasks.filter(x => x.date===k);
   const snap = {energy:dy.energy||0, mood:dy.mood||0, main:dy.main||'', mainDone:!!dy.mainDone,
     done:tt.filter(x => x.done).map(x => x.text), open:tt.filter(x => !x.done).map(x => x.text), rDone:dy.rDone||'', rMove:dy.rMove||''};
-  const r = Object.assign({id:'rep-'+k, date:k, created:Date.now(), edited:0, carried:[]}, JSON.parse(JSON.stringify(snap)), {orig:JSON.parse(JSON.stringify(snap))});
-  S.reports.push(r); save(); toast('День завершён ✨');
-  if(moveItems(r.rMove).length) openCarry(r.id, true); else openReport(r.id);
+  const clone = o => JSON.parse(JSON.stringify(o));
+  let r = ex;
+  if(r) Object.assign(r, clone(snap), {orig:clone(snap), created:Date.now(), edited:0});
+  else { r = Object.assign({id:'rep-'+k, date:k, created:Date.now(), edited:0, carried:[]}, clone(snap), {orig:clone(snap)}); S.reports.push(r); }
+  const n = carryInto(r, pickedItems(), tg, $id('carrySlot').value);
+  FIN = null; CARRY = null; closeModal(); save();
+  toast(`Отчёт за ${fmtD(k, {day:'numeric', month:'long'})} сохранён${n ? ` · задач на ${fmtD(tg, {day:'numeric', month:'short'})}: ${n}` : ''}`);
 }
 function repBody(v, withOpen){
   const L = (t, x) => (x||'').trim() ? `<div class="lbl">${t}</div><p class="rep-l">${esc(x)}</p>` : '';
@@ -2613,13 +2759,13 @@ function repBody(v, withOpen){
 const repChanged = r => ['energy','mood','main','mainDone','rDone','rMove'].some(k => r[k]!==r.orig[k]) || JSON.stringify(r.done||[])!==JSON.stringify(r.orig.done||[]);
 function openReport(id){
   const r = byId(S.reports, id); if(!r) return;
-  const left = carryItems(r).filter(it => !it.why).length;
+  const left = carryList(r.rMove, r.carried, addDays(r.date,1)).filter(it => !it.why).length;
   openModal(`<h3>📝 ${cap(fmtD(r.date, {weekday:'long', day:'numeric', month:'long', year:'numeric'}))}</h3>
     <div class="mini" style="margin:-8px 0 12px">Завершён ${new Date(r.created).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}${r.edited ? ' · изменён '+new Date(r.edited).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}) : ''}</div>
     ${repBody(r, true)}
-    ${(r.carried||[]).length ? `<div class="lbl">Уже перенесено в задачи на ${fmtD(addDays(r.date,1), {day:'numeric', month:'long'})}</div>${r.carried.map(c => `<p class="rep-l">→ ${esc(c.text)}</p>`).join('')}` : ''}
+    ${(r.carried||[]).length ? `<div class="lbl">Перенесено в задачи</div>${r.carried.map(c => `<p class="rep-l">→ ${esc(c.text)} <span class="mini">на ${fmtD(c.date || addDays(r.date,1), {day:'numeric', month:'short'})}</span></p>`).join('')}` : ''}
     ${r.edited && repChanged(r) ? `<details class="rep-orig"><summary>Исходный снимок (не меняется)</summary>${repBody(r.orig, true)}</details>` : ''}
-    <div class="mfoot">${left ? `<button class="btn ghost" data-a="repCarry" data-id="${r.id}">→ В задачи на ${fmtD(addDays(r.date,1), {day:'numeric', month:'short'})}</button>` : ''}
+    <div class="mfoot">${left || moveItems(r.rMove).length ? `<button class="btn ghost" data-a="repCarry" data-id="${r.id}">→ Перенести в задачи…</button>` : ''}
       <button class="btn ghost" data-a="repEdit" data-id="${r.id}">✎ Изменить отчёт</button><button class="btn" data-a="mclose">Закрыть</button></div>`, true);
 }
 function editReport(id){
@@ -2636,39 +2782,30 @@ function editReport(id){
     Object.assign(r, v, {done, edited:Date.now()}); },
   after: () => openReport(r.id)});
 }
-function openCarry(id, justFinished){
+function openCarry(id){
   const r = byId(S.reports, id); if(!r) return;
-  const target = addDays(r.date,1), items = carryItems(r);
-  openModal(`<h3>${justFinished ? '✓ День завершён' : 'Перенести в задачи'}</h3>
-    ${justFinished ? '<p class="muted sm" style="margin-top:-6px">Снимок сохранён в Journaling → «История дней».</p>' : ''}
-    <div class="lbl">Что перенести → задачи на ${fmtD(target, {weekday:'long', day:'numeric', month:'long'})}</div>
-    <div id="carryList">${items.map((it,i) => `<div class="ci ${it.why?'dis':''}"><button class="chk ${it.why?'dis':'on'}" data-a="carryTog" data-i="${i}" ${it.why?'disabled':''}></button><span>${esc(it.text)}</span>${it.why ? `<span class="mini" style="flex:none">${it.why}</span>` : ''}</div>`).join('')}</div>
-    <div class="f half" style="margin-top:12px;max-width:260px"><span>Когда</span><select id="carrySlot">${SLOTS.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+  CARRYR = {id, target:addDays(r.date,1), pick:{}};
+  openModal('<h3>Перенести в задачи</h3><div id="carryBody"></div>');
+  carryRender();
+}
+function carryRender(){
+  const r = CARRYR && byId(S.reports, CARRYR.id); if(!r || !$id('carryBody')) return;
+  const tg = CARRYR.target; CARRY = carryList(r.rMove, r.carried, tg);
+  $id('carryBody').innerHTML = `
+    <div class="f half" style="max-width:260px"><span>Перенести задачи на</span><input type="date" id="carryTarget" value="${tg}" onchange="carrySetTarget(this.value)"></div>
+    <div class="note">Отчёт за ${fmtFull(r.date)} → задачи на ${fmtFull(tg)}</div>
+    <div id="carryList">${carryHtml(CARRY, CARRYR.pick)}</div>
+    ${slotSelect()}
     <p class="muted sm">Задачи создадутся только после подтверждения. Повторно один и тот же пункт не добавится.</p>
-    <div class="mfoot"><button class="btn ghost" data-a="mclose">Не переносить</button><button class="btn" data-a="carryGo" data-id="${r.id}" ${items.every(it => it.why) ? 'disabled' : ''}>Создать задачи</button></div>`);
-  CARRY = items;
+    <div class="mfoot"><button class="btn ghost" data-a="mclose">Не переносить</button><button class="btn" data-a="carryGo" data-id="${r.id}" ${CARRY.every(it => it.why) ? 'disabled' : ''}>Создать задачи</button></div>`;
 }
-let CARRY = null;
-/* пункты «Что перенести» с причиной, почему пункт нельзя перенести ещё раз */
-function carryItems(r){
-  const target = addDays(r.date,1), existing = S.tasks.filter(x => x.date===target).map(x => normText(x.text)), seen = [];
-  return moveItems(r.rMove).map(text => { const n = normText(text);
-    const why = (r.carried||[]).some(c => normText(c.text)===n) ? 'уже перенесено' : existing.includes(n) ? 'такая задача уже есть' : seen.includes(n) ? 'повтор' : '';
-    seen.push(n); return {text, why}; });
-}
+function carrySetTarget(v){ if(CARRYR && v){ CARRYR.target = v; carryRender(); } }
 function carryCreate(id){
-  const r = byId(S.reports, id), items = CARRY; if(!r || !items) return;
-  const target = addDays(r.date,1), slot = $id('carrySlot').value;
-  const picked = [...document.querySelectorAll('#carryList .chk.on')].map(b => items[+b.dataset.i]).filter(it => it && !it.why);
-  if(!picked.length){ toast('Ничего не выбрано'); return; }
-  let n = 0;
-  r.carried = r.carried || [];
-  picked.forEach(it => { const nt = normText(it.text);
-    if(S.tasks.some(x => x.date===target && normText(x.text)===nt) || r.carried.some(c => normText(c.text)===nt)) return; // без дублей
-    const task = {id:uid(), date:target, slot, text:it.text, done:false};
-    S.tasks.push(task); r.carried.push({text:it.text, taskId:task.id, at:Date.now()}); n++; });
-  CARRY = null; closeModal(); save();
-  toast(n ? `Создано задач на ${fmtD(target, {day:'numeric', month:'short'})}: ${n}` : 'Такие задачи уже есть');
+  const r = byId(S.reports, id); if(!r || !CARRYR) return;
+  const picked = pickedItems(); if(!picked.length){ toast('Ничего не выбрано'); return; }
+  const tg = CARRYR.target, n = carryInto(r, picked, tg, $id('carrySlot').value);
+  CARRY = null; CARRYR = null; closeModal(); save();
+  toast(n ? `Создано задач на ${fmtD(tg, {day:'numeric', month:'short'})}: ${n}` : 'Такие задачи уже есть');
 }
 function journalDays(){
   const list = S.reports.slice().sort((a,b) => b.date.localeCompare(a.date));
