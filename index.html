@@ -450,6 +450,9 @@ a.btn{text-decoration:none;display:inline-block}
 .cd.sel .cd-dots b{color:#dfe6d6}
 .cd.rep::after{content:'✓';position:absolute;top:2px;right:5px;font-size:10px;font-weight:800;color:#3c7a1c}
 .cd.sel.rep::after{color:var(--lime)}
+.cd.reo::after{content:'↺';position:absolute;top:1px;right:5px;font-size:11px;font-weight:800;color:#7d3a8a}
+.cd.sel.reo::after{color:var(--lilac)}
+.badge.soon{background:#f3e3f6;color:#7d3a8a}
 .cal-day{margin-top:14px;background:#f7f9f4;border-radius:22px;padding:14px 16px}
 .cd-dots i.tv{border-radius:2px;transform:rotate(45deg);background:var(--green);width:5px;height:5px;margin-left:2px}
 .cd.sel .cd-dots i.tv{background:#fff}
@@ -1767,7 +1770,9 @@ const ACT = {
     const slot = (document.querySelector('[data-calslot]')||{}).value || 'morning';
     S.tasks.push({id:uid(), date:calSelDate(), slot, text:v, done:false}); save();
     const ni = document.querySelector('[data-caltask]'); if(ni) ni.focus(); },
-  dayFinish: () => finishDay(),
+  dayFinish: d => finishDay(d && d.v),
+  dayReopen: d => reopenDay(d.id),
+  dayEdit: d => editDay(d.v),
   repOpen: d => openReport(d.id),
   repEdit: d => editReport(d.id),
   repCarry: d => openCarry(d.id),
@@ -2543,6 +2548,8 @@ function showDoc(id){
 const SLOT_ICO = {morning:'☀️', day:'🌤', evening:'🌙'};
 const calSelDate = () => UI.calSel || T();
 const reportOf = k => S.reports.find(r => r.date===k);
+/* день завершён, если есть отчёт и его не открыли снова */
+const reportClosed = k => { const r = reportOf(k); return !!(r && !r.reopened); };
 function calShift(dir){
   const ref = UI.calRef || calSelDate();
   if(UI.calMonth){ const d = parseD(ref.slice(0,7)+'-01'); d.setMonth(d.getMonth()+dir); UI.calRef = dkey(d); }
@@ -2596,14 +2603,14 @@ function calHtml(){
   const cell = k => { const l = byDate[k] || [], dn = l.filter(x => x.done).length, op = l.length-dn;
     const ev = tev[k] || [], evN = ev.filter(e => !e.compact).length, night = ev.some(e => e.type==='stay');
     const dots = '<i class="on"></i>'.repeat(Math.min(dn,3)) + '<i></i>'.repeat(Math.min(op, Math.max(0, 3-Math.min(dn,3)))) + (l.length>3 ? '<b>+</b>' : '') + (evN ? '<i class="tv"></i>' : '');
-    const cls = [k===t ? 'today' : '', k===sel ? 'sel' : '', month && k.slice(0,7)!==month ? 'out' : '', reportOf(k) ? 'rep' : '', night ? 'nt' : ''].join(' ');
-    const lab = `${fmtD(k, {day:'numeric', month:'long'})}: задач ${l.length}${dn ? ', выполнено '+dn : ''}${evN ? ', событий поездок '+evN : ''}${night ? ', проживание' : ''}${reportOf(k) ? ', день завершён' : ''}`;
+    const rp = reportOf(k), cls = [k===t ? 'today' : '', k===sel ? 'sel' : '', month && k.slice(0,7)!==month ? 'out' : '', rp ? (rp.reopened ? 'reo' : 'rep') : '', night ? 'nt' : ''].join(' ');
+    const lab = `${fmtD(k, {day:'numeric', month:'long'})}: задач ${l.length}${dn ? ', выполнено '+dn : ''}${evN ? ', событий поездок '+evN : ''}${night ? ', проживание' : ''}${rp ? (rp.reopened ? ', день открыт снова' : ', день завершён') : ''}`;
     return `<button class="cd ${cls}" data-a="calPick" data-v="${k}" title="${lab}" aria-label="${lab}"><span>${+k.slice(8)}</span><span class="cd-dots">${dots}</span></button>`; };
   return `<div class="ch"><h2>Мой календарь</h2>
       <div class="cal-nav"><button class="ic" data-a="calPrev" title="${month ? 'Предыдущий месяц' : 'Предыдущая неделя'}">‹</button><span class="cal-t">${title}</span><button class="ic" data-a="calNext" title="${month ? 'Следующий месяц' : 'Следующая неделя'}">›</button>
       ${sel!==t || UI.calRef ? '<button class="btn sm ghost" data-a="calToday">Сегодня</button>' : ''}<button class="btn sm ghost" data-a="calMode">${month ? 'Неделя' : 'Весь месяц'}</button></div></div>
     <div class="mcal">${WD.map(w => `<div class="calh">${w}</div>`).join('')}${days.map(cell).join('')}</div>
-    <div class="cal-leg"><span><i class="lg on"></i>задачи</span><span><i class="lg tv"></i>поездки</span><span><i class="lg nt"></i>проживание</span><span>✓ день завершён</span></div>
+    <div class="cal-leg"><span><i class="lg on"></i>задачи</span><span><i class="lg tv"></i>поездки</span><span><i class="lg nt"></i>проживание</span><span>✓ день завершён</span><span>↺ открыт снова</span></div>
     ${calDayPanel(sel, tev[sel] || [])}`;
 }
 function calDayPanel(k, evs){
@@ -2619,7 +2626,8 @@ function calDayPanel(k, evs){
   return `<div class="cal-day">
     <div class="row between gap"><div><b>${cap(fmtD(k, {weekday:'long', day:'numeric', month:'long'}))}</b>${k===t ? ' <span class="badge">сегодня</span>' : ''}
       <div class="mini">${tasks.length ? `задач: ${tasks.length} · выполнено ${dn}` : 'задач нет'}${evN ? ` · событий поездок: ${evN}` : ''}${k===t ? ' · задачи те же, что в «Плане на сегодня»' : ''}</div></div>
-      ${r ? `<button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">📝 Отчёт дня</button>` : ''}</div>
+      <div class="row gap">${dayButtons(k)}</div></div>
+    ${r && r.reopened ? `<div class="note" style="margin:8px 0">↺ День открыт снова — можно править запись и задачи, потом завершить заново. Отчёт сохранён.</div>` : ''}
     ${rows.map(v => v.html).join('')}
     <div class="addrow cal-add"><select data-calslot aria-label="Когда">${SLOTS.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select>
       <input data-caltask data-enter="calTaskAdd" placeholder="Задача на ${fmtD(k, {day:'numeric', month:'short'})}…"><button class="ic plus" data-a="calTaskAdd" title="Добавить">+</button></div>
@@ -2638,9 +2646,35 @@ function showStop(id){
 /* ---------- отчёт дня: дата отчёта и дата переноса выбираются явно ---------- */
 function finishHtml(){
   const r = reportOf(T());
-  return `<div class="row gap" style="margin-top:12px">${r
-    ? `<span class="badge tt">✓ День завершён</span><button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">Открыть отчёт</button><button class="btn sm ghost" data-a="dayFinish">Другой день…</button>`
-    : '<button class="btn" data-a="dayFinish">Завершить день</button><span class="muted sm">дату отчёта и дату переноса задач выберешь в окне</span>'}</div>`;
+  return `<div class="row gap" style="margin-top:12px">${r && !r.reopened
+    ? `<span class="badge tt">✓ День завершён</span><button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">Открыть отчёт</button><button class="btn sm ghost" data-a="dayReopen" data-id="${r.id}">↺ Открыть день снова</button><button class="btn sm ghost" data-a="dayFinish">Другой день…</button>`
+    : `<button class="btn" data-a="dayFinish">${r ? 'Завершить снова' : 'Завершить день'}</button><span class="muted sm">${r ? '↺ день открыт снова — отчёт обновится, прежний снимок останется в истории' : 'дату отчёта и дату переноса задач выберешь в окне'}</span>`}</div>`;
+}
+/* кнопки для даты в календаре: отчёт, открыть снова, запись дня, завершить */
+function dayButtons(k){
+  const r = reportOf(k), past = k<=T(), out = [];
+  if(r) out.push(`<button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">📝 Отчёт</button>`);
+  if(r && !r.reopened) out.push(`<button class="btn sm ghost" data-a="dayReopen" data-id="${r.id}">↺ Открыть снова</button>`);
+  /* для сегодняшней даты — как кнопка на главной: после полуночи предложит вчерашний день, дату можно сменить в окне */
+  if(past && !(r && !r.reopened)) out.push(`<button class="btn sm ghost" data-a="dayEdit" data-v="${k}">✎ Запись дня</button>`, `<button class="btn sm ghost" data-a="dayFinish"${k===T() ? '' : ` data-v="${k}"`}>✓ ${r ? 'Завершить снова' : 'Завершить'}</button>`);
+  return out.join('');
+}
+/* открыть завершённый день снова: отчёт, запись дня и задачи остаются как есть, перенесённые задачи не трогаем */
+function reopenDay(id){
+  const r = byId(S.reports, id); if(!r || r.reopened) return;
+  if(!confirm(`Открыть ${fmtD(r.date, {day:'numeric', month:'long'})} снова? Отчёт, записи дня и задачи сохранятся; перенесённые задачи останутся на своих датах. Потом день можно завершить заново.`)) return;
+  r.reopened = Date.now(); closeModal(); save(); toast('День открыт снова — можно править');
+}
+/* запись дня за любую прошедшую дату (для сегодняшней — то же, что блоки на главной) */
+function editDay(k){
+  const d = S.days[k] || {};
+  openForm({title:'Запись дня · '+fmtD(k, {day:'numeric', month:'long'}), wide:true,
+    values:{energy:d.energy||0, mood:d.mood||0, main:d.main||'', mainDone:!!d.mainDone, rDone:d.rDone||'', rMove:d.rMove||''}, fields:[
+    {k:'energy', label:'Энергия', type:'scale', half:1}, {k:'mood', label:'Настроение', type:'scale', labels:MOODS, half:1},
+    {k:'main', label:'Одно главное дело'}, {k:'mainDone', label:'Главное дело сделано', type:'check'},
+    {k:'rDone', label:'Что получилось', type:'textarea', rows:3}, {k:'rMove', label:'Что перенести', type:'textarea', rows:3},
+    {type:'hint', label:'Задачи этого дня меняются прямо в календаре. Отчёт обновится, когда завершишь день снова.'}
+  ], onSave: v => { Object.assign(day(k), v); }});
 }
 /* пункты «Что перенести»: по строкам и через «;», без маркеров списка */
 function moveItems(text){
@@ -2675,8 +2709,8 @@ function carryInto(r, picked, target, slot){
 const pickedItems = () => [...document.querySelectorAll('#carryList .chk.on')].map(b => CARRY && CARRY[+b.dataset.i]).filter(it => it && !it.why);
 const slotSelect = () => `<div class="f half" style="max-width:260px"><span>Когда</span><select id="carrySlot">${SLOTS.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>`;
 
-function finishDay(){
-  const k = finDefaultDate();
+function finishDay(date){
+  const k = date && date<=T() ? date : finDefaultDate();
   FIN = {date:k, target:addDays(k,1), targetSet:false, texts:{}, pick:{}};
   openModal('<h3>Завершить день</h3><div id="finBody"></div>', true);
   finRender();
@@ -2706,7 +2740,7 @@ function finRender(){
     <div class="lbl" id="finListH">Что перенести → задачи на ${fmtD(tg, {day:'numeric', month:'long'})}</div>
     <div id="carryList">${carryHtml(CARRY, FIN.pick)}</div>
     ${slotSelect()}
-    ${ex ? `<div class="fwarn">⚠️ Отчёт за ${fmtFull(k)} уже сохранён. <label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="finOver" style="width:auto"> Перезаписать снимок</label></div>` : ''}
+    ${ex ? `<div class="${ex.reopened ? 'note' : 'fwarn'}">${ex.reopened ? '↺ День открыт снова.' : '⚠️ Этот день уже завершён.'} Отчёт за ${fmtFull(k)} обновится, а прежний снимок сохранится в его истории. <label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="finOver" style="width:auto" ${ex.reopened ? 'checked' : ''}> Обновить отчёт</label></div>` : ''}
     <div class="mfoot"><button class="btn ghost" data-a="mclose">Отмена</button><button class="btn" data-a="finSave">Сохранить отчёт</button></div>`;
 }
 function finKeep(list){
@@ -2732,14 +2766,20 @@ function finSave(){
   if(!k || !tg){ toast('Выбери дату отчёта и дату переноса'); return; }
   if(k>T()){ toast('Этот день ещё не наступил'); return; }
   const ex = reportOf(k);
-  if(ex && !($id('finOver') || {}).checked){ toast('Отчёт за эту дату уже есть — отметь «Перезаписать снимок»'); return; }
+  if(ex && !($id('finOver') || {}).checked){ toast('Отчёт за эту дату уже есть — отметь «Обновить отчёт»'); return; }
   const tx = finText(k), dy = day(k); dy.rDone = tx.rDone; dy.rMove = tx.rMove;
   const tt = S.tasks.filter(x => x.date===k);
   const snap = {energy:dy.energy||0, mood:dy.mood||0, main:dy.main||'', mainDone:!!dy.mainDone,
     done:tt.filter(x => x.done).map(x => x.text), open:tt.filter(x => !x.done).map(x => x.text), rDone:dy.rDone||'', rMove:dy.rMove||''};
   const clone = o => JSON.parse(JSON.stringify(o));
   let r = ex;
-  if(r) Object.assign(r, clone(snap), {orig:clone(snap), created:Date.now(), edited:0});
+  if(r){
+    /* прежний снимок (и правки копии, если были) уходит в историю отчёта — ничего не теряется */
+    const prev = {orig:r.orig, created:r.created, edited:r.edited||0};
+    if(r.edited && repChanged(r)) prev.copy = clone(Object.fromEntries(['energy','mood','main','mainDone','done','open','rDone','rMove'].map(f => [f, r[f]])));
+    r.history = (r.history || []).concat([clone(prev)]);
+    Object.assign(r, clone(snap), {orig:clone(snap), created:Date.now(), edited:0, reopened:0});
+  }
   else { r = Object.assign({id:'rep-'+k, date:k, created:Date.now(), edited:0, carried:[]}, clone(snap), {orig:clone(snap)}); S.reports.push(r); }
   const n = carryInto(r, pickedItems(), tg, $id('carrySlot').value);
   FIN = null; CARRY = null; closeModal(); save();
@@ -2761,11 +2801,14 @@ function openReport(id){
   const r = byId(S.reports, id); if(!r) return;
   const left = carryList(r.rMove, r.carried, addDays(r.date,1)).filter(it => !it.why).length;
   openModal(`<h3>📝 ${cap(fmtD(r.date, {weekday:'long', day:'numeric', month:'long', year:'numeric'}))}</h3>
+    ${r.reopened ? `<div class="note" style="margin:-4px 0 12px">↺ День открыт снова ${new Date(r.reopened).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}. Ниже — последний сохранённый отчёт.</div>` : ''}
     <div class="mini" style="margin:-8px 0 12px">Завершён ${new Date(r.created).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}${r.edited ? ' · изменён '+new Date(r.edited).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}) : ''}</div>
     ${repBody(r, true)}
     ${(r.carried||[]).length ? `<div class="lbl">Перенесено в задачи</div>${r.carried.map(c => `<p class="rep-l">→ ${esc(c.text)} <span class="mini">на ${fmtD(c.date || addDays(r.date,1), {day:'numeric', month:'short'})}</span></p>`).join('')}` : ''}
     ${r.edited && repChanged(r) ? `<details class="rep-orig"><summary>Исходный снимок (не меняется)</summary>${repBody(r.orig, true)}</details>` : ''}
-    <div class="mfoot">${left || moveItems(r.rMove).length ? `<button class="btn ghost" data-a="repCarry" data-id="${r.id}">→ Перенести в задачи…</button>` : ''}
+    ${(r.history||[]).slice().reverse().map((h,i) => `<details class="rep-orig"><summary>Предыдущий снимок · ${new Date(h.created).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</summary>${repBody(h.orig, true)}${h.copy ? `<div class="lbl">Правки к этому снимку</div>${repBody(h.copy, true)}` : ''}</details>`).join('')}
+    <div class="mfoot">${r.reopened ? `<button class="btn ghost" data-a="dayFinish" data-v="${r.date}">✓ Завершить снова</button>` : `<button class="btn ghost" data-a="dayReopen" data-id="${r.id}">↺ Открыть день снова</button>`}
+      ${left || moveItems(r.rMove).length ? `<button class="btn ghost" data-a="repCarry" data-id="${r.id}">→ Перенести в задачи…</button>` : ''}
       <button class="btn ghost" data-a="repEdit" data-id="${r.id}">✎ Изменить отчёт</button><button class="btn" data-a="mclose">Закрыть</button></div>`, true);
 }
 function editReport(id){
@@ -2812,7 +2855,7 @@ function journalDays(){
   if(!list.length) return '<div class="card"><p class="empty">Пока нет завершённых дней</p><p class="muted sm" style="margin:6px 0 0">Вечером нажми «Завершить день» в блоке «Итог дня» на главной — здесь появится снимок отчёта.</p></div>';
   return `<div class="card">${list.map(r => `<div class="entry" data-a="repOpen" data-id="${r.id}">
       <div class="row between gap"><b>${cap(fmtD(r.date, {weekday:'short', day:'numeric', month:'long', year:'numeric'}))}</b>
-        <span class="row gap">${r.energy ? `<span class="badge">⚡ ${r.energy}</span>` : ''}${r.mood ? `<span class="mood">${MOODS[r.mood-1]}</span>` : ''}${r.edited && repChanged(r) ? '<span class="badge">изменён</span>' : ''}</span></div>
+        <span class="row gap">${r.energy ? `<span class="badge">⚡ ${r.energy}</span>` : ''}${r.mood ? `<span class="mood">${MOODS[r.mood-1]}</span>` : ''}${r.edited && repChanged(r) ? '<span class="badge">изменён</span>' : ''}${r.reopened ? '<span class="badge soon">↺ открыт снова</span>' : ''}${(r.history||[]).length ? `<span class="badge">версий: ${r.history.length+1}</span>` : ''}</span></div>
       ${(r.main||'').trim() ? `<div class="sm" style="margin-top:4px">${r.mainDone ? '✅' : '🎯'} ${esc(r.main)}</div>` : ''}
       <div class="mini" style="margin-top:4px">выполнено задач: ${(r.done||[]).length}${(r.carried||[]).length ? ` · перенесено: ${r.carried.length}` : ''}</div>
       ${(r.rDone||'').trim() ? `<p class="etext" style="-webkit-line-clamp:3">${esc(r.rDone)}</p>` : ''}
