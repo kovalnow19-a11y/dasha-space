@@ -542,6 +542,32 @@ a.btn{text-decoration:none;display:inline-block}
 .txtview{white-space:pre-wrap;word-break:break-word;background:#f7f9f4;border-radius:16px;padding:14px;max-height:65vh;overflow:auto;font-size:14px}
 @media(max-width:760px){.vids{grid-template-columns:minmax(0,1fr)}.mcard{padding:16px}}
 
+/* ---------- главная: верхняя секция с настроем дня ---------- */
+.home-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,410px);column-gap:26px;align-items:center;padding:26px 30px}
+.home-hero .hh-l,.home-hero .hh-r{position:relative;z-index:1;min-width:0}
+.home-hero h1{font-size:clamp(30px,4.4vw,48px)}
+.hh-brief{margin:10px 0 0;font-weight:700;color:#3c5a2a;font-size:14px}
+.home-hero .stats{grid-column:1/-1;margin-top:18px}
+.hh-r{background:rgba(255,255,255,.55);border-radius:22px;padding:12px 14px;display:grid;gap:8px}
+.dm-row{display:grid;grid-template-columns:88px minmax(0,1fr);align-items:center;gap:8px}
+.dm-row .lbl{margin:0;font-size:11px}
+.hh-r .scale{gap:5px}
+.hh-r .scale button{height:34px;border-radius:12px;font-size:14px;background:rgba(255,255,255,.85)}
+.hh-r .scale button:hover{background:#fff}
+.hh-r .scale button.on{background:var(--lilac);color:#fff}
+.dm-main{display:flex;gap:8px;align-items:center}
+.dm-main input{background:rgba(255,255,255,.88);padding:8px 12px;border-radius:14px;font-size:14px}
+@media(max-width:900px){.home-hero{grid-template-columns:minmax(0,1fr)}.hh-r{margin-top:14px}}
+@media(max-width:760px){
+  .home-hero{padding:20px 18px}
+  .home-hero h1{font-size:30px}
+  .hh-brief{font-size:13.5px}
+  .home-hero .stats{margin-top:14px}
+  .dm-row{grid-template-columns:minmax(0,1fr);gap:4px}
+  .hh-r .scale button{height:40px}
+  .dm-main .chk{width:28px;height:28px}
+}
+
 /* ---------- облако: вход и статус синхронизации ---------- */
 .sync{border:0;background:#fff;border-radius:999px;padding:7px 12px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;box-shadow:var(--shadow);display:flex;gap:6px;align-items:center}
 .sync[hidden]{display:none}
@@ -865,30 +891,31 @@ function vHome(){
   const best = Math.max(0, ...S.habits.map(hStreak));
   const overdue = S.tasks.filter(x => !x.done && x.date<t);
 
-  return hero('Главная', `${greet}, ${esc(S.name)}!`, dateStr, [
-      [`${done}/${tt.length}`,'задач сделано'], [fmtMin(fwMin),'в фокусе за неделю'],
-      [`${hd}/${hNeed.length}`,'привычек сегодня'], [`${best} 🔥`,'лучшая серия']
-    ]) + `<div class="grid">
-    <section class="card span-5">${startDayHtml(dy)}</section>
-    <section class="card span-7">${timerHtml(fw,fwMin)}</section>
+  const brief = tt.length ? `На сегодня ${tt.length} ${plural(tt.length,'задача','задачи','задач')}${tt.length-done ? `, осталось ${tt.length-done}` : ' — всё сделано ✨'}` : 'План на сегодня пока пуст';
+  /* верх: приветствие + настрой дня (энергия, настроение, главное дело) и прежние карточки статистики;
+     сразу под ним — «План на сегодня»; таймер фокуса — в самом низу */
+  return `<section class="hero home-hero">
+      <div class="hh-l"><div class="hero-k">Главная</div><h1>${greet}, ${esc(S.name)}!</h1><p class="hero-sub">${dateStr}</p><p class="hh-brief">${brief}</p></div>
+      <div class="hh-r">${dayMoodHtml(dy)}</div>
+      <div class="stats">${[[`${done}/${tt.length}`,'задач сделано'], [fmtMin(fwMin),'в фокусе за неделю'], [`${hd}/${hNeed.length}`,'привычек сегодня'], [`${best} 🔥`,'лучшая серия']]
+        .map(([v,l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
+    </section><div class="grid">
     <section class="card span-12">${planHtml(tt,overdue)}</section>
     <section class="card span-12">${calHtml()}</section>
     <section class="card span-6">${habitsHtml(t)}</section>
     <section class="card span-6 ${h>=18?'glow':''}">${reviewHtml(dy,tt,h)}</section>
+    <section class="card span-12">${timerHtml(fw,fwMin)}</section>
   </div>`;
 }
 
-function startDayHtml(dy){
-  return `<div class="ch"><h2>Старт дня</h2><span class="muted sm">как ты сегодня?</span></div>
-  <div class="lbl">Энергия</div>
-  <div class="scale">${[1,2,3,4,5].map(n => `<button data-a="setDay" data-f="energy" data-v="${n}" class="${dy.energy===n?'on':''}">${n}</button>`).join('')}</div>
-  <div class="lbl">Настроение</div>
-  <div class="scale">${[1,2,3,4,5].map(n => `<button data-a="setDay" data-f="mood" data-v="${n}" class="${dy.mood===n?'on':''}">${MOODS[n-1]}</button>`).join('')}</div>
-  <div class="lbl">Одно главное дело</div>
-  <div class="row"><button class="chk ${dy.mainDone?'on':''}" data-a="mainDone" title="Отметить"></button>
-  <input data-c="mainTask" value="${esc(dy.main)}"></div>`;
+/* энергия, настроение и главное дело — компактно внутри верхней секции; те же поля и действия, что были в «Старте дня» */
+function dayMoodHtml(dy){
+  const scale = (f, emo) => `<div class="scale">${[1,2,3,4,5].map(n => `<button data-a="setDay" data-f="${f}" data-v="${n}" class="${dy[f]===n?'on':''}" aria-label="${f==='energy' ? 'Энергия' : 'Настроение'} ${n}">${emo ? MOODS[n-1] : n}</button>`).join('')}</div>`;
+  return `<div class="dm-row"><span class="lbl">Энергия</span>${scale('energy', false)}</div>
+    <div class="dm-row"><span class="lbl">Настроение</span>${scale('mood', true)}</div>
+    <div class="dm-main"><button class="chk ${dy.mainDone?'on':''}" data-a="mainDone" title="Главное дело сделано" aria-label="Главное дело сделано"></button>
+      <input data-c="mainTask" value="${esc(dy.main)}" placeholder="Одно главное дело дня…" aria-label="Одно главное дело дня"></div>`;
 }
-
 function timerHtml(fw, fwMin){
   const tm = S.timer, running = tm && tm.running;
   const sec = tm ? tm.section : S.timerCfg.section, dur = tm ? tm.dur : S.timerCfg.dur;
