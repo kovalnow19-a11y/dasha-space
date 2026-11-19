@@ -462,7 +462,7 @@ a.btn{text-decoration:none;display:inline-block}
 .cal-leg i.lg{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--lime);margin-right:5px;vertical-align:0}
 .cal-leg i.lg.tv{border-radius:2px;transform:rotate(45deg);background:var(--green);width:6px;height:6px}
 .cal-leg i.lg.nt{width:14px;height:3px;border-radius:3px;background:#dcc6e1;vertical-align:2px}
-.cal-day .tev{margin:6px 0}
+.cal-day .tev,.slot .tev{margin:6px 0}
 .stay.mini{padding:5px 12px;font-size:13px;background:transparent}
 .stop.flash{background:#f6eef8;border-radius:14px;box-shadow:0 0 0 6px #f6eef8}
 .cal-day .task{border-bottom-color:#e9ede4}
@@ -869,9 +869,13 @@ function planHtml(tt, overdue){
   return `<div class="ch"><h2>План на сегодня</h2><span class="muted sm">→ переносит задачу на завтра${tomorrow ? ` · на завтра уже ${tomorrow}` : ''}</span></div>
   ${overdue.length ? `<div class="note">Не сделано с прошлых дней: ${overdue.length} <button class="btn sm ghost" data-a="pullOverdue">Забрать на сегодня</button></div>` : ''}
   <div class="slots">${SLOTS.map(([k,l]) => {
-    const items = tt.filter(x => x.slot===k);
+    const items = tt.filter(x => x.slot===k), evs = (travelEvents()[T()] || []).filter(e => evSlot(e)===k);
+    /* те же события, что в «Моём календаре» на сегодня: только показ, без копий; порядок — как в календаре */
+    const rows = items.map((x,i) => ({key:TASK_KEY[k], rank:20, i, html:taskRow(x)}))
+      .concat(evs.map((e,i) => ({key:e.time || EV_KEY[e.type] || '12:00', rank:EV_RANK[e.type] ?? 5, i, html:evRow(e)})))
+      .sort((a,b) => a.key.localeCompare(b.key) || a.rank-b.rank || a.i-b.i);
     return `<div class="slot"><div class="slot-h">${l}<span class="muted sm">${items.filter(x=>x.done).length}/${items.length}</span></div>
-      ${items.length ? items.map(taskRow).join('') : '<p class="empty sm">Пока нет задач</p>'}
+      ${rows.length ? rows.map(v => v.html).join('') : '<p class="empty sm">Пока нет задач</p>'}
       <div class="addrow"><input data-newtask="${k}" data-enter="taskAdd" data-slot="${k}" placeholder="Новая задача…"><button class="ic plus" data-a="taskAdd" data-slot="${k}">+</button></div>
     </div>`;
   }).join('')}</div>`;
@@ -2590,6 +2594,9 @@ function travelEvents(){
 const EV_KEY = {tstart:'00:00', swap:'00:00', stay:'00:00', out:'00:01', doc:'00:02', stop:'23:50', dep:'23:57', arr:'23:58', in:'23:59', tend:'23:59'};
 const EV_RANK = {tstart:0, swap:1, stay:2, out:3, doc:4, dep:5, arr:6, stop:7, in:8, tend:9};
 const TASK_KEY = {morning:'06:00', day:'12:00', evening:'18:00'};
+/* группа «Плана на сегодня» для события поездки: по времени, а без времени — по смыслу (время не выдумывается) */
+const EV_SLOT = {tstart:'morning', swap:'morning', stay:'morning', out:'morning', doc:'morning', dep:'day', arr:'day', stop:'day', in:'evening', tend:'evening'};
+const evSlot = e => e.time ? (e.time<'12:00' ? 'morning' : e.time<'18:00' ? 'day' : 'evening') : (EV_SLOT[e.type] || 'day');
 function evRow(e){
   const btn = (txt) => `<button class="stay-h" data-a="${e.act}" data-id="${e.id}">${esc(txt)}</button>`;
   return `<div class="stay tev ${e.type}${e.compact ? ' mini' : ''}"><span class="stay-i">${e.icon}</span><div class="stay-b">${e.title ? `<span class="stay-l">${e.label}:</span> ${btn(e.title)}` : btn(e.label)}${e.time ? `<span class="stay-t">${esc(e.time)}</span>` : ''}</div></div>`;
