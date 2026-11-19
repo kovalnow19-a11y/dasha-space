@@ -454,6 +454,14 @@ a.btn{text-decoration:none;display:inline-block}
 .cd.sel.reo::after{color:var(--lilac)}
 .badge.soon{background:#f3e3f6;color:#7d3a8a}
 .cal-day{margin-top:14px;background:#f7f9f4;border-radius:22px;padding:14px 16px}
+.cal-bar{margin-top:12px;padding:10px 14px;background:#f7f9f4;border-radius:18px}
+.cal-bar-r{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.cal-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.cal-bar.open{border-radius:18px 18px 0 0;padding-bottom:6px}
+.cal-bar-t{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.cal-bar .btn{flex:none}
+.cal-bar-t b{color:var(--green)}
+.cal-bar + .cal-day{margin-top:0;border-radius:0 0 22px 22px;padding-top:2px;border-top:1px solid #e9ede4}
 .cd-dots i.tv{border-radius:2px;transform:rotate(45deg);background:var(--green);width:5px;height:5px;margin-left:2px}
 .cd.sel .cd-dots i.tv{background:#fff}
 .cd.nt::before{content:'';position:absolute;left:9px;right:9px;bottom:3px;height:3px;border-radius:3px;background:#dcc6e1}
@@ -462,6 +470,7 @@ a.btn{text-decoration:none;display:inline-block}
 .cal-leg i.lg{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--lime);margin-right:5px;vertical-align:0}
 .cal-leg i.lg.tv{border-radius:2px;transform:rotate(45deg);background:var(--green);width:6px;height:6px}
 .cal-leg i.lg.nt{width:14px;height:3px;border-radius:3px;background:#dcc6e1;vertical-align:2px}
+@media(max-width:760px){.cal-bar{padding:9px 12px}.cal-leg{gap:4px 9px;font-size:11px}}
 .cal-day .tev,.slot .tev{margin:6px 0}
 .stay.mini{padding:5px 12px;font-size:13px;background:transparent}
 .stop.flash{background:#f6eef8;border-radius:14px;box-shadow:0 0 0 6px #f6eef8}
@@ -687,7 +696,7 @@ function save(){ persist(); render(); }
 
 const UI = {
   btab:'ideas', bplat:'all', bweek:weekStart(T()), bmonth:T().slice(0,7),
-  jtab:'write', jf:'all', calSel:null, calRef:null, calMonth:false, jq:'', jweek:weekStart(T()), jprompt:rand(PROMPTS.free),
+  jtab:'write', jf:'all', calSel:null, calRef:null, calMonth:false, calOpen:calOpenGet(), jq:'', jweek:weekStart(T()), jprompt:rand(PROMPTS.free),
   hsel:null, hmonth:T().slice(0,7),
   rplat:'all', rper:'all', rsort:'date', cmp:[], post:null,
   trip:null, tf:'all', ttab:'route', dcat:'all'
@@ -1765,7 +1774,8 @@ const ACT = {
 
   /* journaling */
   jTab: d => { UI.jtab = d.v; render(); },
-  calPick: d => { UI.calSel = d.v===T() ? null : d.v; render(); },
+  calPick: d => { UI.calSel = d.v===T() ? null : d.v; calOpenSet(true); render(); },
+  calToggle: () => { calOpenSet(!UI.calOpen); render(); },
   calPrev: () => calShift(-1),
   calNext: () => calShift(1),
   calToday: () => { UI.calSel = null; UI.calRef = null; render(); },
@@ -2617,12 +2627,24 @@ function calHtml(){
       <div class="cal-nav"><button class="ic" data-a="calPrev" title="${month ? 'Предыдущий месяц' : 'Предыдущая неделя'}">‹</button><span class="cal-t">${title}</span><button class="ic" data-a="calNext" title="${month ? 'Следующий месяц' : 'Следующая неделя'}">›</button>
       ${sel!==t || UI.calRef ? '<button class="btn sm ghost" data-a="calToday">Сегодня</button>' : ''}<button class="btn sm ghost" data-a="calMode">${month ? 'Неделя' : 'Весь месяц'}</button></div></div>
     <div class="mcal">${WD.map(w => `<div class="calh">${w}</div>`).join('')}${days.map(cell).join('')}</div>
-    <div class="cal-leg"><span><i class="lg on"></i>задачи</span><span><i class="lg tv"></i>поездки</span><span><i class="lg nt"></i>проживание</span><span>✓ день завершён</span><span>↺ открыт снова</span></div>
-    ${calDayPanel(sel, tev[sel] || [])}`;
+    <div class="cal-leg"><span><i class="lg on"></i>задачи</span><span><i class="lg tv"></i>поездки</span><span><i class="lg nt"></i>проживание</span><span>✓ завершён</span><span>↺ открыт снова</span></div>
+    ${calBar(sel, byDate[sel] || [], tev[sel] || [])}
+    ${UI.calOpen ? calDayPanel(sel, tev[sel] || []) : ''}`;
+}
+/* свёрнутый/развёрнутый список выбранного дня; состояние — только удобство вида в этом браузере */
+function calOpenGet(){ try { return localStorage.getItem('da_ui_cal_open')==='1'; } catch(err) { return false; } }
+function calOpenSet(v){ UI.calOpen = !!v; try { localStorage.setItem('da_ui_cal_open', v ? '1' : '0'); } catch(err) {} }
+function calBar(k, tasks, evs){
+  const dn = tasks.filter(x => x.done).length, evN = evs.filter(e => !e.compact).length, r = reportOf(k);
+  const info = [tasks.length ? `задач ${tasks.length}${dn ? ', выполнено '+dn : ''}` : 'задач нет', evN ? `событий поездок ${evN}` : '', r ? (r.reopened ? '↺ открыт снова' : '✓ завершён') : ''].filter(Boolean).join(' · ');
+  const acts = UI.calOpen ? dayButtons(k) : '';
+  /* одна шапка выбранного дня: дата, сводка, статус и «Развернуть/Свернуть»; кнопки дня — только в раскрытом виде */
+  return `<div class="cal-bar ${UI.calOpen ? 'open' : ''}"><div class="cal-bar-r"><div class="cal-bar-t"><b>${cap(fmtD(k, {weekday:'short', day:'numeric', month:'long'}))}${k===T() ? ' · сегодня' : ''}</b><span class="mini">${info}</span></div>
+    <button class="btn sm ghost" data-a="calToggle" aria-expanded="${UI.calOpen}">${UI.calOpen ? 'Свернуть ▴' : 'Развернуть ▾'}</button></div>
+    ${acts ? `<div class="cal-acts">${acts}</div>` : ''}</div>`;
 }
 function calDayPanel(k, evs){
-  const t = T(), ord = {morning:0, day:1, evening:2};
-  const tasks = S.tasks.filter(x => x.date===k), r = reportOf(k), dn = tasks.filter(x => x.done).length, evN = evs.filter(e => !e.compact).length;
+  const ord = {morning:0, day:1, evening:2}, tasks = S.tasks.filter(x => x.date===k);
   const rows = tasks.map((x,i) => ({key:TASK_KEY[x.slot] || '12:00', rank:20+(ord[x.slot]??1), i, html:`<div class="task ${x.done?'done':''}">
       <button class="chk ${x.done?'on':''}" data-a="taskToggle" data-id="${x.id}" title="Отметить"></button>
       <span class="cal-slot" title="${(SLOTS.find(v => v[0]===x.slot)||['',''])[1]}">${SLOT_ICO[x.slot]||'•'}</span>
@@ -2630,12 +2652,9 @@ function calDayPanel(k, evs){
       <button class="ic" title="Удалить" data-a="taskDel" data-id="${x.id}">×</button></div>`}))
     .concat(evs.map((e,i) => ({key:e.time || EV_KEY[e.type] || '12:00', rank:EV_RANK[e.type] ?? 5, i, html:evRow(e)})))
     .sort((a,b) => a.key.localeCompare(b.key) || a.rank-b.rank || a.i-b.i);
+  /* шапка дня (дата, сводка, статус, кнопки) — в calBar; здесь сразу задачи и события */
   return `<div class="cal-day">
-    <div class="row between gap"><div><b>${cap(fmtD(k, {weekday:'long', day:'numeric', month:'long'}))}</b>${k===t ? ' <span class="badge">сегодня</span>' : ''}
-      <div class="mini">${tasks.length ? `задач: ${tasks.length} · выполнено ${dn}` : 'задач нет'}${evN ? ` · событий поездок: ${evN}` : ''}${k===t ? ' · задачи те же, что в «Плане на сегодня»' : ''}</div></div>
-      <div class="row gap">${dayButtons(k)}</div></div>
-    ${r && r.reopened ? `<div class="note" style="margin:8px 0">↺ День открыт снова — можно править запись и задачи, потом завершить заново. Отчёт сохранён.</div>` : ''}
-    ${rows.map(v => v.html).join('')}
+    ${rows.length ? rows.map(v => v.html).join('') : '<p class="empty sm">Нет задач и событий</p>'}
     <div class="addrow cal-add"><select data-calslot aria-label="Когда">${SLOTS.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select>
       <input data-caltask data-enter="calTaskAdd" placeholder="Задача на ${fmtD(k, {day:'numeric', month:'short'})}…"><button class="ic plus" data-a="calTaskAdd" title="Добавить">+</button></div>
   </div>`;
