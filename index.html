@@ -121,6 +121,13 @@ select:disabled{opacity:.6}
 .task.done .tt{text-decoration:line-through;color:var(--muted)}
 .task .ic{width:28px;height:28px;font-size:13px;background:#fff}
 .task .ic:hover{background:var(--lime)}
+.task .drag{flex:none;width:18px;height:28px;margin-right:-4px;display:grid;place-items:center;border-radius:8px;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;color:#b7c0ae}
+.task .drag i{width:8px;height:14px;background:radial-gradient(circle,currentColor 1.4px,transparent 1.6px) 0 0/4px 4.67px}
+.task .drag:hover,.task .drag:focus-visible{color:var(--green);background:#f1f5ec;outline:none}
+.task.dragging{position:relative;z-index:5;background:#fff;border-radius:14px;box-shadow:0 10px 26px rgba(60,80,40,.16);border-bottom-color:transparent}
+.task.dragging .drag{cursor:grabbing;color:var(--green)}
+body.dragging-task,body.dragging-task *{cursor:grabbing!important;-webkit-user-select:none;user-select:none}
+@media(max-width:760px){.task .drag{width:26px;height:34px;margin:0 -6px 0 -6px}}
 .addrow{display:flex;gap:8px;margin-top:10px;align-items:center}
 .addrow input{padding:8px 12px;border-radius:14px}
 .timer{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
@@ -945,7 +952,8 @@ function timerHtml(fw, fwMin){
 }
 
 function taskRow(x){
-  return `<div class="task ${x.done?'done':''}">
+  return `<div class="task ${x.done?'done':''}" data-tid="${x.id}" data-grp="${x.date}|${x.slot}|${x.done?1:0}">
+    <span class="drag" tabindex="0" role="button" aria-label="Перетащить задачу: ${esc(x.text)}" title="Перетащить (или ↑/↓)"><i></i></span>
     <button class="chk ${x.done?'on':''}" data-a="taskToggle" data-id="${x.id}"></button>${x.hwId ? '<span class="cal-slot" title="Домашнее задание из курса">📚</span>' : ''}
     <span class="tt" data-a="taskEdit" data-id="${x.id}" title="Изменить">${esc(x.text)}</span>
     <button class="ic" title="Перенести на завтра" data-a="taskMove" data-id="${x.id}">→</button>
@@ -960,7 +968,8 @@ function planHtml(tt, overdue){
   <div class="slots">${SLOTS.map(([k,l]) => {
     const items = tt.filter(x => x.slot===k), evs = (travelEvents()[T()] || []).filter(e => evSlot(e)===k);
     /* те же события, что в «Моём календаре» на сегодня: только показ, без копий; порядок — как в календаре */
-    const rows = items.map((x,i) => ({key:TASK_KEY[k], rank:20, i, html:taskRow(x)}))
+    /* ручной порядок = место задачи в S.tasks (синхронизируется через order|tasks); невыполненные всегда выше выполненных */
+    const rows = items.map(x => ({key:TASK_KEY[k], rank:x.done ? 21 : 20, i:S.tasks.indexOf(x), html:taskRow(x)}))
       .concat(evs.map((e,i) => ({key:e.time || EV_KEY[e.type] || '12:00', rank:EV_RANK[e.type] ?? 5, i, html:evRow(e)})))
       .sort((a,b) => a.key.localeCompare(b.key) || a.rank-b.rank || a.i-b.i);
     return `<div class="slot"><div class="slot-h">${l}<span class="muted sm">${items.filter(x=>x.done).length}/${items.length}</span></div>
@@ -2050,6 +2059,89 @@ const CH = {
   setName: v => { S.name = v.trim() || 'Даша'; save(); }
 };
 
+/* ---------- перетаскивание задач (ручной приоритет внутри «Утро / День / Вечер») ----------
+   мышь — сразу за значок ⋮⋮; палец — удержанием за значок (~0,18 с). Остальная строка не трогает прокрутку.
+   Двигать можно только среди задач той же группы: тот же день, та же часть дня, тот же статус. */
+let DRAG = null;
+function dragGroup(row){ return [...row.parentNode.children].filter(r => r.dataset && r.dataset.grp===row.dataset.grp); }
+function applyTaskOrder(ids){
+  /* меняем местами только эти задачи: они занимают те же позиции в S.tasks, что и раньше, в новом порядке */
+  const objs = ids.map(id => S.tasks.find(x => String(x.id)===id)).filter(Boolean); if(objs.length < 2) return false;
+  const idx = objs.map(o => S.tasks.indexOf(o)).sort((a,b) => a-b);
+  if(idx.every((n,i) => S.tasks[n]===objs[i])) return false;
+  idx.forEach((n,i) => { S.tasks[n] = objs[i]; });
+  return true;
+}
+function dragStart(){
+  const d = DRAG; d.on = true; d.pending = false;
+  d.row.classList.add('dragging'); document.body.classList.add('dragging-task');
+  d.y0 = d.y; d.top0 = d.row.getBoundingClientRect().top;
+  try { d.h.setPointerCapture(d.pid); } catch(err) {}
+  if(d.touch && navigator.vibrate) try { navigator.vibrate(8); } catch(err) {}
+  d.timer = setInterval(dragAuto, 16);
+}
+function dragMove(){
+  const d = DRAG, row = d.row, grp = dragGroup(row);
+  const mid = d.y - (d.y0 - d.top0) + row.offsetHeight/2; /* центр строки там, где палец */
+  let i = grp.indexOf(row);
+  while(i > 0){ const r = grp[i-1].getBoundingClientRect(); if(mid < r.top + r.height/2){ row.parentNode.insertBefore(row, grp[i-1]); grp.splice(i,1); grp.splice(i-1,0,row); i--; } else break; }
+  while(i < grp.length-1){ const r = grp[i+1].getBoundingClientRect(); if(mid > r.top + r.height/2){ row.parentNode.insertBefore(row, grp[i+1].nextSibling); grp.splice(i,1); grp.splice(i+1,0,row); i++; } else break; }
+  /* строка не уезжает за пределы своей группы */
+  const first = grp[0].getBoundingClientRect(), last = grp[grp.length-1].getBoundingClientRect();
+  row.style.transform = 'none';
+  const natural = row.getBoundingClientRect().top;
+  const want = Math.min(Math.max(d.y - (d.y0 - d.top0), Math.min(first.top, natural) - 4), Math.max(last.top, natural) + 4);
+  row.style.transform = `translateY(${Math.round(want - natural)}px)`;
+}
+function dragAuto(){
+  const d = DRAG; if(!d || !d.on) return;
+  const nav = document.getElementById('nav'), nb = nav ? nav.getBoundingClientRect() : null;
+  const bottom = nb && nb.top > innerHeight/2 ? nb.top : innerHeight, edge = 56;
+  const v = d.y < edge ? -Math.ceil((edge - d.y)/4) : d.y > bottom - edge ? Math.ceil((d.y - bottom + edge)/4) : 0;
+  if(v){ const before = scrollY; window.scrollBy(0, v); if(scrollY !== before){ d.y0 -= scrollY - before; dragMove(); } }
+}
+function dragEnd(commit){
+  const d = DRAG; if(!d) return; DRAG = null;
+  clearTimeout(d.hold); clearInterval(d.timer);
+  document.body.classList.remove('dragging-task');
+  if(!d.on) return;
+  d.row.classList.remove('dragging'); d.row.style.transform = '';
+  const ids = d.row.isConnected ? dragGroup(d.row).map(r => r.dataset.tid) : [];
+  if(commit && ids.length && applyTaskOrder(ids)) save(); else render();
+}
+document.addEventListener('pointerdown', e => {
+  const h = e.target.closest('.task .drag'); if(!h || DRAG || (e.pointerType==='mouse' && e.button!==0)) return;
+  const row = h.closest('.task'); if(dragGroup(row).length < 2) return;
+  const touch = e.pointerType !== 'mouse';
+  DRAG = {h, row, pid:e.pointerId, touch, x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY, on:false};
+  if(!touch) e.preventDefault(); /* без выделения текста */
+  if(touch) DRAG.hold = setTimeout(() => { if(DRAG && !DRAG.on){ if(DRAG.row.isConnected) dragStart(); else DRAG = null; } }, 180);
+});
+document.addEventListener('pointermove', e => {
+  const d = DRAG; if(!d || e.pointerId!==d.pid) return;
+  d.x = e.clientX; d.y = e.clientY;
+  if(!d.on){
+    const dist = Math.hypot(d.x - d.sx, d.y - d.sy);
+    if(d.touch){ if(dist > 10) dragEnd(false); return; } /* палец сдвинулся раньше, чем удержание — это не перетаскивание */
+    if(dist < 4) return;
+    dragStart();
+  }
+  e.preventDefault(); dragMove();
+}, {passive:false});
+document.addEventListener('pointerup', e => { if(DRAG && e.pointerId===DRAG.pid) dragEnd(true); });
+document.addEventListener('pointercancel', e => { if(DRAG && e.pointerId===DRAG.pid) dragEnd(true); });
+/* старый Safari: пока задача перетаскивается, страница не прокручивается пальцем */
+document.addEventListener('touchmove', e => { if(DRAG && DRAG.on) e.preventDefault(); }, {passive:false});
+document.addEventListener('contextmenu', e => { if(e.target.closest && e.target.closest('.task .drag')) e.preventDefault(); });
+/* клавиатура: фокус на ⋮⋮ и стрелки вверх/вниз */
+document.addEventListener('keydown', e => {
+  if(!(e.key==='ArrowUp' || e.key==='ArrowDown') || !e.target.closest || !e.target.closest('.task .drag')) return;
+  const row = e.target.closest('.task'), grp = dragGroup(row), i = grp.indexOf(row), j = i + (e.key==='ArrowUp' ? -1 : 1);
+  e.preventDefault(); if(j < 0 || j >= grp.length) return;
+  const ids = grp.map(r => r.dataset.tid); [ids[i], ids[j]] = [ids[j], ids[i]];
+  if(applyTaskOrder(ids)){ save(); const h = document.querySelector(`.task[data-tid="${CSS.escape(row.dataset.tid)}"] .drag`); if(h) h.focus(); }
+});
+
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if(!el) return;
   const fn = ACT[el.dataset.a], inMenu = !!el.closest('#menuPop');
@@ -2844,7 +2936,8 @@ function calBar(k, tasks, evs){
 }
 function calDayPanel(k, evs){
   const ord = {morning:0, day:1, evening:2}, tasks = S.tasks.filter(x => x.date===k);
-  const rows = tasks.map((x,i) => ({key:TASK_KEY[x.slot] || '12:00', rank:20+(ord[x.slot]??1), i, html:`<div class="task ${x.done?'done':''}">
+  /* порядок задач — тот же ручной, что в «Плане на сегодня»: невыполненные выше, внутри — по месту в S.tasks */
+  const rows = tasks.map(x => ({key:TASK_KEY[x.slot] || '12:00', rank:20+(ord[x.slot]??1)*2+(x.done ? 1 : 0), i:S.tasks.indexOf(x), html:`<div class="task ${x.done?'done':''}">
       <button class="chk ${x.done?'on':''}" data-a="taskToggle" data-id="${x.id}" title="Отметить"></button>
       <span class="cal-slot" title="${(SLOTS.find(v => v[0]===x.slot)||['',''])[1]}">${SLOT_ICO[x.slot]||'•'}</span>
       <span class="tt" data-a="taskEdit" data-id="${x.id}" title="Изменить">${esc(x.text)}</span>
@@ -3914,6 +4007,7 @@ function go(v){
 window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if(VIEWS[v] && v!==view) go(v); });
 
 function render(){
+  if(DRAG && DRAG.on){ DRAG.pending = true; return; } /* во время перетаскивания не перерисовываем — после отпускания */
   document.getElementById('app').innerHTML = VIEWS[view]();
   document.getElementById('nav').innerHTML = NAV.map(([k,l,s,i]) =>
     `<button class="${k===view?'on':''}" data-a="nav" data-v="${k}"><span class="ico">${i}</span><span class="nl">${l}</span><span class="ns">${s}</span></button>`).join('');
