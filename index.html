@@ -121,6 +121,7 @@ select:disabled{opacity:.6}
 .task.done .tt{text-decoration:line-through;color:var(--muted)}
 .task .ic{width:28px;height:28px;font-size:13px;background:#fff}
 .task .ic:hover{background:var(--lime)}
+.ahead-note{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .task .drag{flex:none;width:18px;height:28px;margin-right:-4px;display:grid;place-items:center;border-radius:8px;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;color:#b7c0ae}
 .task .drag i{width:8px;height:14px;background:radial-gradient(circle,currentColor 1.4px,transparent 1.6px) 0 0/4px 4.67px}
 .task .drag:hover,.task .drag:focus-visible{color:var(--green);background:#f1f5ec;outline:none}
@@ -682,7 +683,21 @@ function tzNow(d=new Date()){
     return {date:`${p.year}-${p.month}-${p.day}`, h:+p.hour % 24, m:+p.minute};
   } catch(err) { return {date:dkey(d), h:d.getHours(), m:d.getMinutes()}; } /* если браузер не знает часовой пояс — время устройства */
 }
-const WT = () => { const n = tzNow(); return n.h < WORK_END_H ? addDays(n.date,-1) : n.date; };
+const WT0 = () => { const n = tzNow(); return n.h < WORK_END_H ? addDays(n.date,-1) : n.date; }; /* обычная рабочая дата */
+/* «Перейти к следующему дню» после завершения дня: только показ на этом устройстве, даты задач и поездок не меняются.
+   Действует, пока обычная рабочая дата та же (base); в 05:00 она меняется — и ручной режим сам сбрасывается */
+let AHEAD = null;
+try { AHEAD = JSON.parse(localStorage.getItem('da_work_ahead') || 'null'); } catch(err) { AHEAD = null; }
+function aheadSet(v){ AHEAD = v; try { v ? localStorage.setItem('da_work_ahead', JSON.stringify(v)) : localStorage.removeItem('da_work_ahead'); } catch(err) {} }
+function aheadOn(){
+  if(!AHEAD) return false;
+  const base = WT0();
+  if(!AHEAD.base || AHEAD.base!==base || AHEAD.date!==addDays(base,1)){ aheadSet(null); return false; }
+  return true;
+}
+const WT = () => aheadOn() ? AHEAD.date : WT0();
+/* кнопка «Перейти к следующему дню» — когда текущий рабочий день завершён */
+function aheadOffer(w){ const r = reportOf(w); return !aheadOn() && r && !r.reopened; }
 const weekStart = k => { const d = parseD(k); d.setDate(d.getDate()-((d.getDay()+6)%7)); return dkey(d); };
 const uid = () => Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -901,7 +916,7 @@ function vHome(){
   /* w — рабочая дата (до 05:00 это ещё вчерашний день): план, настрой дня, итог дня; t — календарная дата: привычки, фокус */
   const t = T(), w = WT(), dy = day(w), h = tzNow().h;
   const greet = h<5 ? 'Доброй ночи' : h<12 ? 'Доброе утро' : h<18 ? 'Добрый день' : 'Добрый вечер';
-  const dateStr = cap(fmtD(w, {weekday:'long', day:'numeric', month:'long', year:'numeric'})) + (w!==tzNow().date ? ' · рабочий день до 05:00' : '');
+  const dateStr = cap(fmtD(w, {weekday:'long', day:'numeric', month:'long', year:'numeric'})) + (aheadOn() ? ' · открыт вручную до 05:00' : w!==tzNow().date ? ' · рабочий день до 05:00' : '');
   const tt = S.tasks.filter(x => x.date===w), done = tt.filter(x => x.done).length;
   const wk = weekStart(t), we = addDays(wk,6);
   const fw = S.focus.filter(f => f.date>=wk && f.date<=we);
@@ -975,9 +990,15 @@ function taskRow(x){
   </div>`;
 }
 
+function aheadHtml(w){
+  if(aheadOn()) return `<div class="note ahead-note">⏩ Показан план на ${fmtD(w, {day:'numeric', month:'long'})}: переход сделан вручную, раньше 05:00. <button class="btn sm ghost" data-a="aheadBack">← Вернуться к ${fmtD(AHEAD.base, {day:'numeric', month:'long'})}</button></div>`;
+  if(aheadOffer(w)) return `<div class="note ahead-note">✓ День ${fmtD(w, {day:'numeric', month:'long'})} завершён. <button class="btn sm" data-a="aheadGo">Перейти к следующему дню →</button></div>`;
+  return '';
+}
 function planHtml(tt, overdue){
   const w = WT(), tomorrow = S.tasks.filter(x => x.date===addDays(w,1)).length;
   return `<div class="ch"><h2>План на сегодня</h2><span class="muted sm">→ переносит задачу на завтра${tomorrow ? ` · на завтра уже ${tomorrow}` : ''}</span></div>
+  ${aheadHtml(w)}
   ${overdue.length ? `<div class="note">Не сделано с прошлых дней: ${overdue.length} <button class="btn sm ghost" data-a="pullOverdue">Забрать на сегодня</button></div>` : ''}
   <div class="slots">${SLOTS.map(([k,l]) => {
     const items = tt.filter(x => x.slot===k), evs = (travelEvents()[w] || []).filter(e => evSlot(e)===k);
@@ -1850,6 +1871,8 @@ const ACT = {
   taskAdd: d => { const inp = document.querySelector(`[data-newtask="${d.slot}"]`), v = inp.value.trim(); if(!v) return;
     S.tasks.push({id:uid(), date:d.d || WT(), slot:d.slot, text:v, done:false}); save();
     const ni = document.querySelector(`[data-newtask="${d.slot}"]`); if(ni) ni.focus(); },
+  aheadGo: () => { const base = WT0(); if(!aheadOffer(base)) return; aheadSet({base, date:addDays(base,1), at:Date.now()}); render(); scrollTo({top:0, behavior:'smooth'}); toast(`План на ${fmtD(addDays(base,1), {day:'numeric', month:'long'})}`); },
+  aheadBack: () => { const b = AHEAD && AHEAD.base; aheadSet(null); render(); if(b) toast(`Снова ${fmtD(b, {day:'numeric', month:'long'})}`); },
   pullOverdue: () => { const w = WT(); S.tasks.forEach(t => { if(!t.done && t.date<w) t.date = w; }); save(); toast('Задачи перенесены на сегодня'); },
   moveUndone: () => { let n = 0; const w = WT(); S.tasks.forEach(t => { if(t.date===w && !t.done){ t.date = addDays(w,1); n++; } }); save(); toast(`Перенесено на завтра: ${n}`); },
   tDur: d => { if(S.timer) return; S.timerCfg.dur = +d.v; save(); },
@@ -2979,7 +3002,7 @@ function showStop(id){
 function finishHtml(){
   const r = reportOf(WT());
   return `<div class="row gap" style="margin-top:12px">${r && !r.reopened
-    ? `<span class="badge tt">✓ День завершён</span><button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">Открыть отчёт</button><button class="btn sm ghost" data-a="dayReopen" data-id="${r.id}">↺ Открыть день снова</button><button class="btn sm ghost" data-a="dayFinish">Другой день…</button>`
+    ? `<span class="badge tt">✓ День завершён</span>${aheadOffer(WT()) ? '<button class="btn sm" data-a="aheadGo">Перейти к следующему дню →</button>' : ''}<button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">Открыть отчёт</button><button class="btn sm ghost" data-a="dayReopen" data-id="${r.id}">↺ Открыть день снова</button><button class="btn sm ghost" data-a="dayFinish">Другой день…</button>`
     : `<button class="btn" data-a="dayFinish">${r ? 'Завершить снова' : 'Завершить день'}</button><span class="muted sm">${r ? '↺ день открыт снова — отчёт обновится, прежний снимок останется в истории' : 'дату отчёта и дату переноса задач выберешь в окне'}</span>`}</div>`;
 }
 /* кнопки для даты в календаре: отчёт, открыть снова, запись дня, завершить */
@@ -4028,19 +4051,20 @@ function render(){
 }
 
 /* перерисовка главной раз в минуту (приветствие, смена дня) */
-let lastDay = T(), lastWork = WT();
+const workKey = () => WT()+'|'+(aheadOn() ? 1 : 0);
+let lastDay = T(), lastWork = workKey();
 function dayTick(force){
-  const changed = T()!==lastDay || WT()!==lastWork;
+  const changed = T()!==lastDay || workKey()!==lastWork;
   const active = document.activeElement, typing = !!(active && /INPUT|TEXTAREA|SELECT/.test(active.tagName));
-  if(view!=='home' || document.getElementById('modalRoot').innerHTML){ lastDay = T(); lastWork = WT(); return; }
+  if(view!=='home' || document.getElementById('modalRoot').innerHTML){ lastDay = T(); lastWork = workKey(); return; }
   /* смена рабочего дня (05:00) — сразу; если в поле на главной что-то печатают, ждём конца ввода:
      введённое сохранится за ту дату, для которой поле было показано, и через пару секунд план переключится */
   if(changed && typing && active.closest('#app')) return;
-  lastDay = T(); lastWork = WT();
+  lastDay = T(); lastWork = workKey();
   if(changed || (force && !typing)) render();
 }
 setInterval(() => dayTick(true), 60000);
-setInterval(() => { if(WT()!==lastWork || T()!==lastDay) dayTick(false); }, 5000);
+setInterval(() => { if(workKey()!==lastWork || T()!==lastDay) dayTick(false); }, 5000);
 /* телефон/PWA мог «спать» — при возвращении проверяем дату сразу */
 ['visibilitychange','pageshow','focus'].forEach(ev => (ev==='visibilitychange' ? document : window).addEventListener(ev, () => { if(document.visibilityState!=='hidden') dayTick(false); }));
 
