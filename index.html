@@ -312,6 +312,14 @@ body.dragging-task,body.dragging-task *{cursor:grabbing!important;-webkit-user-s
 /* пока открыто окно, страница под ним стоит на месте (iOS-надёжный способ) */
 body.mlock{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .modal.wide{width:min(780px,100%)}
+.mc-bg{z-index:110;background:rgba(20,30,15,.28)}
+.modal.mc{width:min(440px,100%)}
+.modal.mc h3{font-size:21px;margin-bottom:8px}
+.mc-b{display:grid;gap:8px;margin-top:16px}
+.mc-b .btn{width:100%;justify-content:center}
+.mc-b .btn.mc-del{color:#a3364a}
+.draft-note{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:-4px 0 14px}
+.drafts .draft-note{margin:10px 0 0}
 .modal h3{margin:0 0 16px;font-size:25px;font-weight:800;letter-spacing:-.03em;color:var(--green)}
 .fg{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
 .f{grid-column:1/-1;display:flex;flex-direction:column;gap:6px}
@@ -1420,7 +1428,7 @@ function renderPostModal(){
 
 function openPostForm(p){
   const isNew = !p, x = p || newPost({date:T()});
-  openForm({title: isNew ? 'Новый ролик' : 'Данные ролика', wide:true, values:x, fields:[
+  openForm({title: isNew ? 'Новый ролик' : 'Данные ролика', wide:true, values:x, draft: isNew ? 'post:new' : 'post:'+x.id, fields:[
     {k:'title', label:'Название', req:true},
     {k:'platform', label:'Площадка', type:'select', options:POST_PLATS, half:1},
     {k:'date', label:'Дата публикации', type:'date', half:1},
@@ -1500,7 +1508,7 @@ function openIdea(id, preset){
   const it = id ? byId(S.ideas,id) : Object.assign({id:uid(), title:'', platform:'Instagram', format:'Reels', status:'идея', date:'',
     pain:'', essence:'', conflict:'', touch:'', turn:'', script:'', refs:''}, preset||{});
   if(!it) return;
-  openForm({title: id ? 'Карточка идеи' : 'Новая идея', wide:true, values:it, fields:[
+  openForm({title: id ? 'Карточка идеи' : 'Новая идея', wide:true, values:it, draft: id ? 'idea:'+id : 'idea:new', fields:[
     {k:'title', label:'Название / рабочий заголовок', req:true},
     {k:'platform', label:'Площадка', type:'select', options:['Instagram','TikTok','Instagram + TikTok'], half:1},
     {k:'format', label:'Формат', type:'select', options:['Reels','TikTok','Карусель','Stories','Пост'], half:1},
@@ -1554,6 +1562,13 @@ function entryCard(e){
   </div>`;
 }
 
+/* несохранённые черновики записей (только на этом устройстве) — чтобы их было легко найти и дописать */
+function journalDraftsHtml(){
+  const ds = Object.entries(draftsAll()).filter(([k]) => /^journal:/.test(k)).map(([k, d]) => { const [, a, b] = k.split(':');
+    const e = a==='new' ? null : byId(S.journal, a); if(a!=='new' && !e) return null;
+    return {k, at:d.at, label: e ? `правка записи от ${fmtD(e.date, {day:'numeric', month:'short'})}` : 'новая '+({morning:'☀️ утренняя запись', evening:'🌙 вечерняя запись'}[b] || '✍️ свободная запись')}; }).filter(Boolean).sort((x,y) => y.at-x.at);
+  return ds.length ? `<div class="drafts">${ds.map(d => `<div class="note draft-note">📝 Черновик: ${esc(d.label)} · ${draftTime(d.at)}<button class="btn sm" data-a="jDraft" data-k="${esc(d.k)}">Продолжить</button></div>`).join('')}</div>` : '';
+}
 function journalWrite(){
   const t = T(), todayE = S.journal.filter(e => e.date===t);
   const has = ty => todayE.some(e => e.type===ty);
@@ -1570,6 +1585,7 @@ function journalWrite(){
         <button class="bigbtn ${has('evening')?'done':''}" data-a="jNew" data-type="evening">🌙 Вечерняя запись<small>${has('evening') ? 'готово ✓' : 'рефлексия и выводы'}</small></button>
         <button class="bigbtn" data-a="jNew" data-type="free">✍️ Свободная<small>просто мысли</small></button>
       </div>
+      ${journalDraftsHtml()}
       ${todayE.length ? `<div class="lbl">Записи за сегодня</div>${todayE.map(entryCard).join('')}` : ''}
     </section>
     <section class="card span-5 qcard"><div class="ch"><h2>Вопрос для рефлексии</h2></div>
@@ -1614,7 +1630,7 @@ function journalWeek(){
 function openEntry(id, type, prompt){
   const e = id ? byId(S.journal,id) : {id:uid(), date:T(), type:type||'free', mood:0, emotions:[], prompt:prompt || rand(PROMPTS[type||'free']), text:'', ts:Date.now()};
   if(!e) return;
-  openForm({title: id ? 'Запись' : (JT[e.type]+' — новая запись'), wide:true, values:e, fields:[
+  openForm({title: id ? 'Запись' : (JT[e.type]+' — новая запись'), wide:true, values:e, draft: id ? 'journal:'+id : 'journal:new:'+e.type, fields:[
     {k:'type', label:'Тип', type:'select', options:Object.entries(JT), half:1},
     {k:'date', label:'Дата', type:'date', half:1},
     {k:'mood', label:'Настроение', type:'scale', labels:MOODS},
@@ -1700,7 +1716,7 @@ function booksHtml(){
 function openModule(cid, mid){
   const c = byId(S.courses,cid); if(!c) return;
   const m = byId(c.modules,mid); if(!m) return;
-  openForm({title:'Модуль и конспект', wide:true, values:m, fields:[
+  openForm({title:'Модуль и конспект', wide:true, values:m, draft:'mod:'+m.id, fields:[
     {k:'title', label:'Название модуля', req:true},
     lessonsOf(m).length ? {type:'hint', label:'Прогресс модуля считается по пройденным урокам.'} : {k:'done', label:'Модуль пройден', type:'check'},
     {k:'notes', label:'Конспект лекции', type:'textarea', rows:10},
@@ -1710,7 +1726,7 @@ function openModule(cid, mid){
 
 function openBook(id){
   const b = id ? byId(S.books,id) : {id:uid(), title:'', author:'', status:'читаю', progress:0, quotes:'', notes:''};
-  openForm({title: id ? 'Книга' : 'Новая книга', wide:true, values:b, fields:[
+  openForm({title: id ? 'Книга' : 'Новая книга', wide:true, values:b, draft: id ? 'book:'+id : 'book:new', fields:[
     {k:'title', label:'Название', req:true, half:1}, {k:'author', label:'Автор', half:1},
     {k:'status', label:'Статус', type:'select', options:['хочу прочитать','читаю','прочитано'], half:1},
     {k:'progress', label:'Прочитано, %', type:'number', half:1},
@@ -1730,7 +1746,7 @@ function openModal(html, wide){
   document.getElementById('modalRoot').innerHTML = `<div class="modal-bg" data-a="mbg"><div class="modal ${wide?'wide':''}">${html}</div></div>`;
   lockScroll(); vvSync();
 }
-function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; FORM = null; unlockScroll(); }
+function closeModal(){ clearTimeout(DRAFT_T); DRAFT_T = null; document.getElementById('modalRoot').innerHTML = ''; FORM = null; unlockScroll(); }
 /* блокировка прокрутки страницы под окном: запоминаем позицию и возвращаем её после закрытия */
 let MLOCK = null;
 function lockScroll(){
@@ -1774,14 +1790,61 @@ function fieldHtml(f, v){
   return `<div class="${cls}" data-k="${f.k}"><span>${esc(f.label)}</span>${inner}</div>`;
 }
 
+/* ---------- черновики форм: только на этом устройстве (localStorage), в облако и логи не попадают ----------
+   ключ — запись, которую правят (journal:<id>, journal:new:<тип>, idea:<id>…); черновик никогда сам не становится записью */
+const DRAFT_KEY = 'da_drafts';
+function draftsAll(){ try { const m = JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}'); return m && typeof m==='object' ? m : {}; } catch(err) { return {}; } }
+function draftGet(k){ return k ? draftsAll()[k] || null : null; }
+function draftSet(k, v){ if(!k) return; const m = draftsAll(); m[k] = {v, at:Date.now()}; try { localStorage.setItem(DRAFT_KEY, JSON.stringify(m)); } catch(err) { toast('Не удалось сохранить черновик на устройстве'); } }
+function draftDel(k){ if(!k) return; const m = draftsAll(); if(!(k in m)) return; delete m[k]; try { localStorage.setItem(DRAFT_KEY, JSON.stringify(m)); } catch(err) {} }
+const draftTime = at => new Date(at).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+/* записать значения в открытую форму (для восстановления черновика) */
+function fillForm(v){
+  const form = $id('mform'); if(!form || !FORM) return;
+  FORM.fields.forEach(f => { if(!f.k || !(f.k in v)) return; const x = v[f.k];
+    if(f.type==='scale') form.querySelectorAll(`[data-group="${f.k}"] button`).forEach(b => b.classList.toggle('on', +b.dataset.v===+x));
+    else if(f.type==='chips') form.querySelectorAll(`[data-group="${f.k}"] .chip`).forEach(b => b.classList.toggle('on', (x||[]).includes(b.dataset.v)));
+    else if(f.type==='check'){ const b = form.querySelector(`[data-group="${f.k}"]`); if(b) b.classList.toggle('on', !!x); }
+    else { const el = form.elements[f.k]; if(el) el.value = x ?? ''; } });
+}
+/* есть ли изменения относительно сохранённой записи */
+function formDirty(){ return !!(FORM && FORM.base!=null && $id('mform') && JSON.stringify(collect())!==FORM.base); }
+let DRAFT_T = null;
+function draftFlush(){
+  clearTimeout(DRAFT_T); DRAFT_T = null;
+  if(!FORM || !FORM.draft || !$id('mform')) return;
+  if(formDirty()) draftSet(FORM.draft, collect()); else draftDel(FORM.draft);
+}
+function draftSchedule(){ if(FORM && FORM.draft){ clearTimeout(DRAFT_T); DRAFT_T = setTimeout(draftFlush, 700); } }
+['input','change','click'].forEach(t => document.getElementById('modalRoot').addEventListener(t, e => { if(e.target.closest && e.target.closest('#mform')) draftSchedule(); }));
+/* приложение уходит в фон или закрывается (в том числе PWA на iPhone) — черновик записываем сразу */
+document.addEventListener('visibilitychange', () => { if(document.visibilityState==='hidden') draftFlush(); });
+window.addEventListener('pagehide', draftFlush);
+/* закрыть окно по «Отмене», Escape или фону: при несохранённых изменениях — спросить */
+function requestClose(){
+  if($id('mcBg')) return;
+  if(!formDirty()){ if(FORM && FORM.draft) draftDel(FORM.draft); closeModal(); return; }
+  const d = document.createElement('div');
+  d.className = 'modal-bg mc-bg'; d.id = 'mcBg'; d.dataset.a = 'mcKeep';
+  d.innerHTML = `<div class="modal mc" role="alertdialog" aria-labelledby="mcT"><h3 id="mcT">Есть несохранённые изменения</h3>
+    <p class="muted">${FORM.draft ? 'Текст можно оставить черновиком на этом устройстве — он откроется, когда ты вернёшься к этой записи.' : 'Если закрыть окно, изменения пропадут.'}</p>
+    <div class="mc-b"><button class="btn" data-a="mcKeep">Продолжить редактирование</button>
+      ${FORM.draft ? '<button class="btn ghost" data-a="mcDraft">Сохранить черновик</button><button class="btn ghost mc-del" data-a="mcDiscard">Удалить черновик</button>' : '<button class="btn ghost mc-del" data-a="mcDiscard">Закрыть без сохранения</button>'}</div></div>`;
+  $id('modalRoot').appendChild(d);
+  d.querySelector('[data-a=mcKeep].btn').focus();
+}
+
 function openForm(cfg){
+  clearTimeout(DRAFT_T); DRAFT_T = null;
   FORM = cfg;
-  const v = cfg.values || {};
-  openModal(`<h3>${esc(cfg.title)}</h3>
+  const v = cfg.values || {}, dr = draftGet(cfg.draft);
+  openModal(`<h3>${esc(cfg.title)}</h3>${dr ? `<div class="note draft-note" id="draftNote">📝 Восстановлен несохранённый черновик от ${draftTime(dr.at)}<button type="button" class="btn sm ghost" data-a="draftDrop">Удалить черновик</button></div>` : ''}
     <form id="mform" class="fg" onsubmit="return false">${cfg.fields.map(f => fieldHtml(f, f.k ? v[f.k] : '')).join('')}</form>
     <div class="mfoot">${cfg.onDelete ? '<button class="btn danger" data-a="mdel">Удалить</button>' : ''}
       <button class="btn ghost" data-a="mclose">Отмена</button><button class="btn" data-a="msave">Сохранить</button></div>`, cfg.wide);
   if(cfg.onInput) cfg.onInput(document.getElementById('mform'), '');
+  cfg.base = JSON.stringify(collect()); /* как форма выглядит без изменений */
+  if(dr){ fillForm(dr.v); if(cfg.onInput) cfg.onInput(document.getElementById('mform'), ''); }
   const first = document.querySelector('#mform input[type=text], #mform input:not([type]), #mform textarea');
   if(first && !('ontouchstart' in window)) first.focus();
 }
@@ -2023,16 +2086,22 @@ const ACT = {
   bookOpen: d => openBook(d.id),
 
   /* окно */
-  mbg: (d, el, e) => { if(e.target===el) closeModal(); },
-  mclose: () => closeModal(),
+  mbg: (d, el, e) => { if(e.target===el) requestClose(); },
+  /* «Отмена»: в формах с длинным текстом (есть черновик) спрашиваем, в коротких — закрываем сразу, как раньше */
+  mclose: () => FORM && !FORM.draft ? closeModal() : requestClose(),
+  mcKeep: (d, el, e) => { if(el.id==='mcBg' && e.target!==el) return; const b = $id('mcBg'); if(b) b.remove(); },
+  mcDraft: () => { if(!FORM) return; draftSet(FORM.draft, collect()); closeModal(); render(); toast('Черновик сохранён на этом устройстве'); },
+  mcDiscard: () => { const k = FORM && FORM.draft; draftDel(k); closeModal(); if(k){ render(); toast('Черновик удалён'); } },
+  draftDrop: () => { if(!FORM) return; draftDel(FORM.draft); fillForm(FORM.values || {}); if(FORM.onInput) FORM.onInput($id('mform'), ''); const n = $id('draftNote'); if(n) n.remove(); toast('Черновик удалён'); },
+  jDraft: d => { const [, a, b] = String(d.k||'').split(':'); if(a==='new') openEntry(null, b); else if(byId(S.journal, a)) openEntry(a); else { draftDel(d.k); render(); } },
   msave: () => {
     const v = collect();
     const miss = FORM.fields.find(f => f.req && !String(v[f.k]||'').trim());
     if(miss){ toast('Заполни поле «'+miss.label+'»'); return; }
     const bad = FORM.validate && FORM.validate(v); if(bad){ toast(bad); return; }
-    const after = FORM.after; FORM.onSave(v); closeModal(); save(); toast('Сохранено'); if(after) after();
+    const after = FORM.after, dk = FORM.draft; FORM.onSave(v); draftDel(dk); closeModal(); save(); toast('Сохранено'); if(after) after();
   },
-  mdel: () => { if(!confirm('Удалить безвозвратно?')) return; const after = FORM.after; FORM.onDelete(); closeModal(); save(); toast('Удалено'); if(after) after(); },
+  mdel: () => { if(!confirm('Удалить безвозвратно?')) return; const after = FORM.after; draftDel(FORM.draft); FORM.onDelete(); closeModal(); save(); toast('Удалено'); if(after) after(); },
   scale: (d, el) => { const was = el.classList.contains('on'); el.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('on')); if(!was) el.classList.add('on'); },
   chip: (d, el) => el.classList.toggle('on'),
   swt: (d, el) => el.classList.toggle('on'),
@@ -2206,7 +2275,8 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('keydown', e => {
   if(e.key==='Escape' && LB){ LB = null; showLB(); return; }
-  if(e.key==='Escape' && document.getElementById('modalRoot').innerHTML) closeModal();
+  if(e.key==='Escape' && $id('mcBg')){ $id('mcBg').remove(); return; }
+  if(e.key==='Escape' && document.getElementById('modalRoot').innerHTML) requestClose();
   if(e.key==='Enter' && e.target.dataset && e.target.dataset.enter && !e.isComposing){
     e.preventDefault(); const fn = ACT[e.target.dataset.enter]; if(fn) fn(e.target.dataset, e.target, e);
   }
@@ -3039,7 +3109,7 @@ function reopenDay(id){
 /* запись дня за любую прошедшую дату (для сегодняшней — то же, что блоки на главной) */
 function editDay(k){
   const d = S.days[k] || {};
-  openForm({title:'Запись дня · '+fmtD(k, {day:'numeric', month:'long'}), wide:true,
+  openForm({title:'Запись дня · '+fmtD(k, {day:'numeric', month:'long'}), wide:true, draft:'day:'+k,
     values:{energy:d.energy||0, mood:d.mood||0, main:d.main||'', mainDone:!!d.mainDone, rDone:d.rDone||'', rMove:d.rMove||''}, fields:[
     {k:'energy', label:'Энергия', type:'scale', half:1}, {k:'mood', label:'Настроение', type:'scale', labels:MOODS, half:1},
     {k:'main', label:'Одно главное дело'}, {k:'mainDone', label:'Главное дело сделано', type:'check'},
@@ -3365,7 +3435,7 @@ function lessonView(c, m, l){
 function openLessonForm(cid, mid, lid){
   const x = learnLes(cid, mid, lid); if(!x) return;
   const {c, m, l} = x, ls = lessonsOf(m);
-  openForm({title:'Урок', wide:true, values:{title:l.title, pos:ls.indexOf(l)+1, desc:l.desc||'', done:!!l.done, notes:l.notes||''}, fields:[
+  openForm({title:'Урок', wide:true, draft:'les:'+l.id, values:{title:l.title, pos:ls.indexOf(l)+1, desc:l.desc||'', done:!!l.done, notes:l.notes||''}, fields:[
     {k:'title', label:'Название урока', req:true},
     {k:'pos', label:`Порядковый номер (1–${ls.length})`, type:'number', half:1},
     {k:'done', label:'Урок пройден', type:'check', half:1},
@@ -4081,6 +4151,7 @@ async function cloudLogout(){
   CL.leaving = true;
   try { await CL.sb.auth.signOut(); } catch(err) {}
   clearUserCache();
+  try { localStorage.removeItem(DRAFT_KEY); } catch(err) {}
   location.replace(location.pathname);
 }
 
