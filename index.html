@@ -503,6 +503,45 @@ a.btn{text-decoration:none;display:inline-block}
 .mi.danger{color:#a33b2a}
 .mi.danger:hover{background:#fbe7e3}
 
+/* ---------- саморазвитие: модуль, видео, материалы, домашка ---------- */
+.lsec{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.lsec-h{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;border:0;background:none;padding:4px 0;font:inherit;cursor:pointer;color:var(--green);text-align:left}
+.lsec-h b{font-size:16px;font-weight:800}
+.lsec-h .mini{flex:1}
+.lsec-b{margin-top:8px}
+.mcard{background:#fff;border-radius:var(--r);box-shadow:var(--shadow);padding:22px;margin-top:14px}
+.mhead{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.mhead h1{margin:4px 0 2px;font-size:clamp(24px,4vw,34px);letter-spacing:-.03em;color:var(--green);line-height:1.1;word-break:break-word}
+.vids{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;align-items:start}
+.vid{background:#f7f9f4;border-radius:20px;padding:10px;min-width:0}
+.yt{position:relative;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#1b2416}
+.yt.short{aspect-ratio:9/16;width:min(100%,260px);margin:0 auto}
+.yt iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.yt-thumb{position:absolute;inset:0;width:100%;height:100%;border:0;padding:0;cursor:pointer;background:#1b2416 center/cover no-repeat}
+.yt-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:64px;height:44px;border-radius:14px;background:rgba(31,58,18,.88);color:#fff;font-size:20px;display:grid;place-items:center}
+.yt-err{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;text-align:center;padding:16px;color:#fff;font-weight:700;font-size:14px}
+.vid-r{display:flex;align-items:center;gap:8px;margin-top:8px;min-width:0}
+.vid-r b{flex:1;min-width:0;word-break:break-word;font-size:14.5px}
+.lfs{display:grid;gap:8px}
+.lf{display:flex;align-items:center;gap:10px;background:#f7f9f4;border-radius:16px;padding:8px 10px;min-width:0}
+.lf-i{flex:none;width:38px;height:38px;border-radius:12px;background:linear-gradient(160deg,var(--lime),var(--lilac));display:grid;place-items:center;color:#fff;font-weight:800;font-size:11px}
+.lf-b{flex:1;min-width:0}
+.lf-b b{display:block;font-size:14px;word-break:break-word}
+.hwl{display:grid;gap:8px}
+.hw{background:#f7f9f4;border-radius:18px;padding:10px 12px}
+.hw.flash{box-shadow:0 0 0 3px var(--lilac)}
+.hw-r{display:flex;align-items:flex-start;gap:10px}
+.hw-b{flex:1;min-width:0;cursor:pointer}
+.hw-b b{display:block;word-break:break-word}
+.hw.done .hw-b b{text-decoration:line-through;color:var(--muted)}
+.hw-d{margin:4px 0 0;font-size:13.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word}
+.hw-links{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.hw-links a{font-size:13px}
+.hw .lfs{margin-top:8px}
+.cont{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;background:linear-gradient(120deg,#e6f3d6,#f3e3f6);border-radius:22px;padding:14px 18px;margin-bottom:18px}
+.txtview{white-space:pre-wrap;word-break:break-word;background:#f7f9f4;border-radius:16px;padding:14px;max-height:65vh;overflow:auto;font-size:14px}
+@media(max-width:760px){.vids{grid-template-columns:minmax(0,1fr)}.mcard{padding:16px}}
+
 /* ---------- облако: вход и статус синхронизации ---------- */
 .sync{border:0;background:#fff;border-radius:999px;padding:7px 12px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;box-shadow:var(--shadow);display:flex;gap:6px;align-items:center}
 .sync[hidden]{display:none}
@@ -546,6 +585,7 @@ a.btn{text-decoration:none;display:inline-block}
 <div id="toast" class="toast"></div>
 <input type="file" id="importFile" accept=".json,application/json" hidden>
 <input type="file" id="mediaFile" accept="image/*" hidden>
+<input type="file" id="lfFile" multiple hidden>
 <input type="file" id="docFile" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple hidden>
 <div id="lightbox" class="lb" data-a="lbBg" hidden></div>
 
@@ -625,7 +665,8 @@ function emptyState(){
     courses:[], books:[], goals:[],
     posts:[], blogSeeded:0, postsMigrated:0,
     trips:[], stops:[], docs:[],
-    reports:[]
+    reports:[],
+    hw:[]
   };
 }
 
@@ -708,7 +749,7 @@ function save(){ persist(); render(); }
 
 const UI = {
   btab:'ideas', bplat:'all', bweek:weekStart(T()), bmonth:T().slice(0,7),
-  jtab:'write', jf:'all', calSel:null, calRef:null, calMonth:false, calOpen:calOpenGet(), jq:'', jweek:weekStart(T()), jprompt:rand(PROMPTS.free),
+  jtab:'write', jf:'all', calSel:null, calRef:null, calMonth:false, calOpen:calOpenGet(), stab:'courses', mod:null, hwf:'open', jq:'', jweek:weekStart(T()), jprompt:rand(PROMPTS.free),
   hsel:null, hmonth:T().slice(0,7),
   rplat:'all', rper:'all', rsort:'date', cmp:[], post:null,
   trip:null, tf:'all', ttab:'route', dcat:'all'
@@ -878,7 +919,7 @@ function timerHtml(fw, fwMin){
 
 function taskRow(x){
   return `<div class="task ${x.done?'done':''}">
-    <button class="chk ${x.done?'on':''}" data-a="taskToggle" data-id="${x.id}"></button>
+    <button class="chk ${x.done?'on':''}" data-a="taskToggle" data-id="${x.id}"></button>${x.hwId ? '<span class="cal-slot" title="Домашнее задание из курса">📚</span>' : ''}
     <span class="tt" data-a="taskEdit" data-id="${x.id}" title="Изменить">${esc(x.text)}</span>
     <button class="ic" title="Перенести на завтра" data-a="taskMove" data-id="${x.id}">→</button>
     <button class="ic" title="Удалить" data-a="taskDel" data-id="${x.id}">×</button>
@@ -1520,31 +1561,39 @@ function vSelf(){
   const wk = weekStart(T()), mo = T().slice(0,7);
   const gw = S.goals.filter(g => g.period==='week' && g.key===wk), gm = S.goals.filter(g => g.period==='month' && g.key===mo);
   const notes = mods.filter(m => (m.notes||'').trim()).length;
+  const mv = UI.mod && learnMod(UI.mod.cid, UI.mod.mid);
+  if(mv) return moduleView(mv.c, mv.m);
+  UI.mod = null;
+  const hwOpen = S.hw.filter(h => !h.done).length;
   return hero('Саморазвитие','Учусь и расту','Курсы, конспекты, книги и цели', [
       [pct(md,mods.length)+'%','курсов пройдено'], [`${md}/${mods.length}`,'модулей'],
       [`${gw.filter(g=>g.done).length}/${gw.length}`,'целей недели'], [notes,'конспектов']
-    ]) + `<div class="grid">
+    ]) + `<div class="tabs">${tabs([['courses','Курсы и цели'], ['hw', `Моя домашка${hwOpen ? ' ('+hwOpen+')' : ''}`]], UI.stab, 'selfTab')}</div>`
+    + (UI.stab==='hw' ? myHomework() : `${continueHtml()}<div class="grid">
     <section class="card span-12">${coursesHtml()}</section>
     <section class="card span-6">${goalsHtml('week', gw, 'Цели недели', fmtD(wk,{day:'numeric',month:'short'})+' — '+fmtD(addDays(wk,6),{day:'numeric',month:'short'}))}</section>
     <section class="card span-6">${goalsHtml('month', gm, 'Цели месяца', cap(new Date().toLocaleDateString('ru-RU',{month:'long',year:'numeric'})))}</section>
     <section class="card span-12">${booksHtml()}</section>
-  </div>`;
+  </div>`);
 }
 
 function coursesHtml(){
   return `<div class="ch"><h2>Курсы и обучение</h2><button class="btn sm ghost" data-a="courseNew">+ Курс</button></div>
   ${S.courses.map(c => { const d = c.modules.filter(m => m.done).length, n = c.modules.length, p = pct(d,n);
+    const ch = S.hw.filter(h => h.cid===c.id), chd = ch.filter(h => h.done).length;
     return `<div class="course">
-      <div class="row between"><div><span class="ct">${esc(c.title)}</span><div class="muted sm">${d} из ${n} ${plural(n,'модуля','модулей','модулей')} · ${p}%</div></div>
+      <div class="row between"><div><span class="ct">${esc(c.title)}</span><div class="muted sm">${d} из ${n} ${plural(n,'модуля','модулей','модулей')} · ${p}%${ch.length ? ` · домашка ${chd}/${ch.length}` : ''}</div></div>
       <button class="ic" data-a="courseEdit" data-id="${c.id}" title="Изменить курс">✎</button></div>
       <div class="bar big"><i style="width:${p}%"></i></div>
-      ${c.modules.map((m,i) => `<div class="mod ${m.done?'done':''}">
+      ${c.modules.map((m,i) => { const mh = S.hw.filter(h => h.mid===m.id), mhd = mh.filter(h => h.done).length;
+        return `<div class="mod ${m.done?'done':''}">
         <button class="chk ${m.done?'on':''}" data-a="modToggle" data-cid="${c.id}" data-mid="${m.id}"></button>
         <span class="mn">${i+1}</span>
-        <span class="mt" data-a="modOpen" data-cid="${c.id}" data-mid="${m.id}">${esc(m.title)}</span>
-        ${(m.notes||'').trim() ? '<span class="badge">📝 конспект</span>' : ''}${(m.apply||'').trim() ? '<span class="badge tt">⚡ практика</span>' : ''}
-        <button class="btn sm ghost" data-a="modOpen" data-cid="${c.id}" data-mid="${m.id}">Конспект</button>
-      </div>`).join('')}
+        <span class="mt" data-a="modView" data-cid="${c.id}" data-mid="${m.id}">${esc(m.title)}</span>
+        ${(m.notes||'').trim() ? '<span class="badge">📝 конспект</span>' : ''}${(m.apply||'').trim() ? '<span class="badge tt">⚡ практика</span>' : ''}${(m.videos||[]).length ? `<span class="badge">▶ ${m.videos.length}</span>` : ''}${(m.files||[]).length ? `<span class="badge">📎 ${m.files.length}</span>` : ''}${mh.length ? `<span class="badge ${mhd===mh.length?'tt':'ig'}">✅ ${mhd}/${mh.length}</span>` : ''}
+        <button class="btn sm ghost" data-a="modView" data-cid="${c.id}" data-mid="${m.id}">Открыть</button>
+      </div>`; }).join('')}
+      ${learnSec('c-'+c.id, '📎 Материалы курса', (c.files||[]).length, filesHtml('c:'+c.id, c.files||[]) + `<button class="btn sm ghost" data-a="lfAdd" data-o="c:${c.id}" style="margin-top:8px">+ Файлы</button>`, false)}
       <div class="addrow"><input data-newmod="${c.id}" data-enter="modAdd" data-cid="${c.id}" placeholder="Новый модуль…"><button class="ic plus" data-a="modAdd" data-cid="${c.id}">+</button></div>
     </div>`; }).join('') || '<p class="empty">Пока нет курсов</p><button class="btn sm" data-a="courseNew" style="margin-top:8px">+ Добавить курс</button>'}`;
 }
@@ -1583,7 +1632,7 @@ function openModule(cid, mid){
     {k:'done', label:'Модуль пройден', type:'check'},
     {k:'notes', label:'Конспект лекции', type:'textarea', rows:10},
     {k:'apply', label:'Как применю на практике', type:'textarea', rows:3}
-  ], onSave: v => Object.assign(m,v), onDelete: () => del(c.modules,mid)});
+  ], onSave: v => Object.assign(m,v), onDelete: () => { dropModuleData(c, m); del(c.modules,mid); UI.mod = null; }});
 }
 
 function openBook(id){
@@ -1681,7 +1730,7 @@ function openSettings(){
   openModal(`<h3>Данные и настройки</h3>
     <div class="f"><span>Как тебя называть</span><input data-c="setName" value="${esc(S.name)}"></div>
     <p class="muted sm">Записи и изображения хранятся в твоём личном облаке и синхронизируются между телефоном и компьютером. Вход: <b>${esc(CL.email)}</b>. ${syncText()}.</p>
-    <p class="muted sm">Время от времени делай экспорт — это твоя резервная копия, в неё входят и изображения. Файл экспорта можно загрузить обратно через «Импорт». Файлы документов поездок хранятся в облаке и в файл копии не входят — только их названия и заметки.</p>
+    <p class="muted sm">Время от времени делай экспорт — это твоя резервная копия, в неё входят и изображения. Файл экспорта можно загрузить обратно через «Импорт». Файлы документов поездок и учебные материалы хранятся в облаке и в файл копии не входят — только их названия и описания.</p>
     <p class="muted sm"><b>${storageLine()}</b>.</p>
     <div class="stack">
       <button class="btn" data-a="export">⬇️ Экспорт всех данных в файл</button>
@@ -1742,12 +1791,12 @@ const ACT = {
   /* главная */
   setDay: d => { const x = day(T()); x[d.f] = x[d.f]===+d.v ? 0 : +d.v; save(); },
   mainDone: () => { const x = day(T()); x.mainDone = !x.mainDone; save(); },
-  taskToggle: d => { const t = byId(S.tasks,d.id); if(t){ t.done = !t.done; save(); } },
+  taskToggle: d => { const t = byId(S.tasks,d.id); if(t){ t.done = !t.done; hwFromTask(t); save(); } },
   taskMove: d => { const t = byId(S.tasks,d.id); if(t){ t.date = addDays(T(),1); t.done = false; save(); toast('Перенесено на завтра'); } },
   taskDel: d => { del(S.tasks,d.id); save(); },
   taskEdit: d => { const t = byId(S.tasks,d.id); if(!t) return;
     openForm({title:'Задача', values:t, fields:[{k:'text', label:'Задача', req:true}, {k:'slot', label:'Когда', type:'select', options:SLOTS, half:1}, {k:'date', label:'Дата', type:'date', half:1}, {k:'done', label:'Сделано', type:'check'}],
-      onSave: v => Object.assign(t,v), onDelete: () => del(S.tasks,t.id)}); },
+      onSave: v => { Object.assign(t,v); hwFromTask(t); }, onDelete: () => del(S.tasks,t.id)}); },
   taskAdd: d => { const inp = document.querySelector(`[data-newtask="${d.slot}"]`), v = inp.value.trim(); if(!v) return;
     S.tasks.push({id:uid(), date:T(), slot:d.slot, text:v, done:false}); save();
     const ni = document.querySelector(`[data-newtask="${d.slot}"]`); if(ni) ni.focus(); },
@@ -1844,9 +1893,36 @@ const ACT = {
   courseNew: () => { const c = {id:uid(), title:'', modules:[]};
     openForm({title:'Новый курс', values:c, fields:[{k:'title', label:'Название курса', req:true}], onSave: v => { Object.assign(c,v); S.courses.push(c); }}); },
   courseEdit: d => { const c = byId(S.courses,d.id); if(!c) return;
-    openForm({title:'Курс', values:c, fields:[{k:'title', label:'Название курса', req:true}], onSave: v => Object.assign(c,v), onDelete: () => del(S.courses,c.id)}); },
+    openForm({title:'Курс', values:c, fields:[{k:'title', label:'Название курса', req:true}], onSave: v => Object.assign(c,v), onDelete: () => { dropCourseData(c); del(S.courses,c.id); UI.mod = null; }}); },
   modToggle: d => { const c = byId(S.courses,d.cid), m = c && byId(c.modules,d.mid); if(m){ m.done = !m.done; save(); if(m.done) toast('Модуль пройден 🎉'); } },
   modOpen: d => openModule(d.cid, d.mid),
+  modView: d => openModView(d.cid, d.mid),
+  modBack: () => { UI.mod = null; render(); window.scrollTo(0,0); },
+  selfTab: d => { UI.stab = d.v; render(); },
+  learnContinue: () => { const l = learnLast(); if(l) openModView(l.cid, l.mid, l.vid ? 'v-'+l.vid : ''); },
+  secTog: d => { secSet(d.k, !secOpen(d.k, d.def==='1')); render(); },
+  vidAdd: d => openVideoForm(d.cid, d.mid, null),
+  vidMenu: (d, el) => toggleMenu(el, `<button class="mi" data-a="vidEdit" data-cid="${d.cid}" data-mid="${d.mid}" data-id="${d.id}">✎ Изменить</button><button class="mi danger" data-a="vidDel" data-cid="${d.cid}" data-mid="${d.mid}" data-id="${d.id}">🗑 Удалить</button>`),
+  vidEdit: d => openVideoForm(d.cid, d.mid, d.id),
+  vidDel: d => deleteVideo(d.cid, d.mid, d.id),
+  ytPlay: d => ytPlay(d.id),
+  lfAdd: d => lfPick(d.o, null),
+  lfMenu: (d, el) => toggleMenu(el, lfMenuItems(d.o, d.id)),
+  lfView: d => lfView(d.o, d.id),
+  lfDl: d => lfDownload(d.o, d.id),
+  lfRename: d => lfRename(d.o, d.id),
+  lfReplace: d => lfPick(d.o, d.id),
+  lfDel: d => lfDelete(d.o, d.id),
+  lfGo: () => lfRunUpload(),
+  hwAdd: d => openHwForm(null, d.cid, d.mid),
+  hwEdit: d => openHwForm(d.id),
+  hwToggle: d => hwToggle(d.id),
+  hwMenu: (d, el) => toggleMenu(el, `<button class="mi" data-a="hwEdit" data-id="${d.id}">✎ Изменить</button><button class="mi" data-a="lfAdd" data-o="h:${d.id}">📎 Прикрепить файлы</button><button class="mi" data-a="hwPlan" data-id="${d.id}">📅 Добавить в план</button><button class="mi danger" data-a="hwDel" data-id="${d.id}">🗑 Удалить</button>`),
+  hwDel: d => deleteHw(d.id),
+  hwPlan: d => openHwPlan(d.id),
+  hwPlanGo: d => hwPlanSave(d.id),
+  hwOpen: d => { const h = byId(S.hw, d.id); if(h) openModView(h.cid, h.mid, 'hw-'+h.id); },
+  hwFilter: d => { UI.hwf = d.v; render(); },
   modAdd: d => { const inp = document.querySelector(`[data-newmod="${d.cid}"]`), v = inp.value.trim(), c = byId(S.courses,d.cid); if(!v || !c) return;
     c.modules.push({id:uid(), title:v, done:false, notes:'', apply:''}); save(); },
   goalToggle: d => { const g = byId(S.goals,d.id); if(g){ g.done = !g.done; save(); } },
@@ -1915,7 +1991,7 @@ const ACT = {
   wipe: async () => { if(!confirm('Удалить ВСЕ данные из облака? Это нельзя отменить. Сначала лучше сделать экспорт.')) return;
     const n = S.name; S = emptyState(); S.name = n; S.habitsSeeded = 1; S.blogSeeded = 1; S.postsMigrated = 1; MEDIA = {}; CL.pmedia = {}; CL.urls = {}; savePendingMedia(); saveUrls(); UI.cmp = [];
     closeModal(); save(); toast('Кабинет очищен');
-    await removeAllCloudMedia(); await removeAllCloudMedia(SB_DOCS); },
+    await removeAllCloudMedia(); await removeAllCloudMedia(SB_DOCS); await removeAllCloudMedia(SB_LEARN); },
   syncNow: () => { if(CL.status==='err' || CL.status==='off') toast('Пробую связаться с облаком…'); cloudSync(); },
   migrate: () => { const L = legacyInfo(); if(L) openMigrate(L, true); else toast('В этом браузере нет старых записей'); },
   migGo: async (d, el) => { el.disabled = true; await runMigration(MIG.L, MIG.mode); },
@@ -2258,13 +2334,13 @@ function removeDocFiles(list){
   list.forEach(x => delete CL.durls[x.id]);
   if(paths.length && CL.sb) CL.sb.storage.from(SB_DOCS).remove(paths).then(r => { if(r && r.error) console.warn('doc remove', r.error); }).catch(() => {});
 }
-function docErrText(e){
+function docErrText(e, sql){
   if(e && e.userMsg) return e.userMsg;
   const m = String((e && (e.message || e.error)) || ''), st = +((e && (e.status || e.statusCode)) || 0);
   if((e && e.net) || isNetErr(e)) return 'Нет связи с интернетом — попробуй ещё раз';
   if(st===413 || /too large|maximum allowed size|exceeded the maximum/i.test(m)) return 'Файл слишком большой — лимит 20 МБ на документ';
-  if(st===415 || /mime/i.test(m)) return 'Этот формат не поддерживается — нужен PDF, JPG, PNG или WEBP';
-  if(/bucket not found/i.test(m)) return 'Хранилище документов ещё не создано в Supabase — нужно выполнить скрипт travel-documents.sql';
+  if(st===415 || /mime/i.test(m)) return sql ? 'Этот формат не поддерживается — нужен PDF, картинка, DOCX, DOC, ODT, RTF, TXT или MD' : 'Этот формат не поддерживается — нужен PDF, JPG, PNG или WEBP';
+  if(/bucket not found/i.test(m)) return `Хранилище ещё не создано в Supabase — нужно выполнить скрипт ${sql || 'travel-documents.sql'}`;
   if(/quota|storage limit|space/i.test(m)) return 'Закончилось место в бесплатном хранилище Supabase (1 ГБ)';
   if(st===401 || st===403 || /jwt|unauthori|row-level security|policy/i.test(m)) return 'Нет доступа к хранилищу — выйди и войди снова. Если не поможет, проверь, выполнен ли скрипт travel-documents.sql';
   return 'Не получилось: '+(m || 'ошибка '+st);
@@ -2567,7 +2643,7 @@ function closeMenu(){
 document.addEventListener('click', e => {
   if(!MENU) return;
   if(e.target.closest('#menuPop')) return;
-  if(e.target.closest('[data-a=docMenu]')===MENU.anchor) return;
+  if(e.target.closest('.more')===MENU.anchor) return;
   closeMenu();
 }, true);
 document.addEventListener('keydown', e => { if(e.key==='Escape' && MENU){ closeMenu(); e.stopPropagation(); } }, true);
@@ -2985,11 +3061,324 @@ function journalDays(){
 }
 
 /* =========================================================
+   САМОРАЗВИТИЕ · видео, материалы, домашние задания
+   Курсы и модули остаются прежними; у модуля добавляются поля videos и files,
+   у курса — files. Домашние задания — отдельный список S.hw (одна строка на задание),
+   его показывают и модуль, и «Моя домашка» — без копий.
+   Файлы — в приватной папке Supabase Storage «learning-files»; в данных только их описания.
+   ========================================================= */
+const SB_LEARN = 'learning-files';
+const LF_MAX = 20*1024*1024;  // как в настройке bucket learning-files
+const LF_TYPES = {pdf:'application/pdf', jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', webp:'image/webp',
+  docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', doc:'application/msword',
+  odt:'application/vnd.oasis.opendocument.text', rtf:'application/rtf', txt:'text/plain', md:'text/markdown'};
+const lfExt = n => (String(n||'').split('.').pop()||'').toLowerCase();
+const lfMime = f => LF_TYPES[lfExt(f.name)] || (Object.values(LF_TYPES).includes(f.type) ? f.type : '');
+const lfExtOf = m => Object.keys(LF_TYPES).find(k => LF_TYPES[k]===m && k!=='jpeg') || 'bin';
+const lfIcon = m => m==='application/pdf' ? 'PDF' : /^image\//.test(m) ? '🖼' : /^text\//.test(m) ? 'TXT' : 'DOC';
+const learnMod = (cid, mid) => { const c = byId(S.courses, cid), m = c && byId(c.modules||[], mid); return m ? {c, m} : null; };
+
+/* ---------- сворачиваемые секции и «продолжить обучение» (только удобство вида в этом браузере) ---------- */
+function secMap(){ try { return JSON.parse(localStorage.getItem('da_learn_sec') || '{}') || {}; } catch(err) { return {}; } }
+function secOpen(k, def){ const m = secMap(); return k in m ? !!m[k] : !!def; }
+function secSet(k, v){ const m = secMap(); m[k] = v; try { localStorage.setItem('da_learn_sec', JSON.stringify(m)); } catch(err) {} }
+function learnSec(k, title, count, body, def, extra){
+  const open = secOpen(k, def);
+  return `<div class="lsec"><button class="lsec-h" data-a="secTog" data-k="${k}" data-def="${def?1:0}" aria-expanded="${open}"><b>${title}</b><span class="mini">${count!=null && count!=='' ? count : ''}</span><span class="mini">${open ? 'Свернуть ▴' : 'Развернуть ▾'}</span></button>
+    ${open ? `<div class="lsec-b">${body}</div>` : ''}${extra || ''}</div>`;
+}
+function learnLast(){ try { const l = JSON.parse(localStorage.getItem('da_learn_last') || 'null'); return l && learnMod(l.cid, l.mid) ? l : null; } catch(err) { return null; } }
+function learnRemember(cid, mid, vid){ const l = learnLast() || {}; const v = {cid, mid, vid: vid || (l.cid===cid && l.mid===mid ? l.vid : '')}; try { localStorage.setItem('da_learn_last', JSON.stringify(v)); } catch(err) {} }
+function continueHtml(){
+  const l = learnLast(); if(!l) return '';
+  const {c, m} = learnMod(l.cid, l.mid), v = l.vid && (m.videos||[]).find(x => x.id===l.vid);
+  return `<div class="cont"><div><div class="mini">Продолжить обучение</div><b>${esc(c.title)} → ${esc(m.title)}</b>${v ? `<div class="muted sm">▶ ${esc(v.title || 'Видео')}</div>` : ''}</div>
+    <button class="btn sm" data-a="learnContinue">Продолжить →</button></div>`;
+}
+function openModView(cid, mid, focusId){
+  if(!learnMod(cid, mid)) return;
+  UI.mod = {cid, mid}; UI.stab = 'courses'; learnRemember(cid, mid);
+  if(view!=='self') go('self'); else { render(); window.scrollTo(0,0); }
+  if(focusId){ const el = $id(focusId); if(el){ el.scrollIntoView({behavior:'smooth', block:'center'}); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2200); } }
+}
+
+/* ---------- страница модуля ---------- */
+function moduleView(c, m){
+  const hw = S.hw.filter(h => h.mid===m.id), hd = hw.filter(h => h.done).length, vids = m.videos || [], idx = c.modules.indexOf(m);
+  return `<div class="trip-nav"><button class="btn ghost sm" data-a="modBack">← Все курсы</button><button class="btn ghost sm" data-a="modOpen" data-cid="${c.id}" data-mid="${m.id}">✎ Название и конспект</button></div>
+  <div class="mcard">
+    <div class="mhead"><div style="min-width:0"><div class="hero-k">${esc(c.title)} · модуль ${idx+1}</div><h1>${esc(m.title)}</h1></div>
+      <div class="row gap"><button class="chk ${m.done?'on':''}" data-a="modToggle" data-cid="${c.id}" data-mid="${m.id}" title="Отметить модуль пройденным"></button><span class="sm">${m.done ? 'Модуль пройден' : 'Отметить пройденным'}</span></div></div>
+    <div class="rep-k" style="margin-top:12px">
+      <div class="hs"><b>${m.done ? '✓' : '—'}</b><span>прохождение (вручную)</span></div>
+      <div class="hs"><b>${hd}/${hw.length}</b><span>домашка выполнена</span></div>
+      <div class="hs"><b>${vids.length}</b><span>${plural(vids.length,'видео','видео','видео')}</span></div></div>
+    ${hw.length ? `<div class="bar" style="margin-top:4px"><i style="width:${pct(hd, hw.length)}%"></i></div>` : ''}
+
+    ${learnSec('v-'+m.id, '▶ Видео лекций', vids.length || '', vids.length ? `<div class="vids">${vids.map(v => videoCard(c, m, v)).join('')}</div>` : '<p class="empty sm">Пока нет видео — добавь ссылку на YouTube</p>', true,
+      `<button class="btn sm ghost" data-a="vidAdd" data-cid="${c.id}" data-mid="${m.id}" style="margin-top:8px">+ Видео с YouTube</button>`)}
+
+    ${learnSec('f-'+m.id, '📎 Материалы модуля и конспекта', (m.files||[]).length || '', filesHtml(`m:${c.id}:${m.id}`, m.files||[]) + `<button class="btn sm ghost" data-a="lfAdd" data-o="m:${c.id}:${m.id}" style="margin-top:8px">+ Файлы</button>`
+      + ((c.files||[]).length ? `<div class="lbl">Материалы всего курса</div>${filesHtml('c:'+c.id, c.files)}` : ''), false)}
+
+    ${learnSec('n-'+m.id, '📝 Конспект', (m.notes||'').trim() ? '' : 'пусто', `${(m.notes||'').trim() ? `<p class="rep-l">${esc(m.notes)}</p>` : '<p class="empty sm">Конспекта пока нет</p>'}
+      ${(m.apply||'').trim() ? `<div class="lbl">Как применю на практике</div><p class="rep-l">${esc(m.apply)}</p>` : ''}
+      <button class="btn sm ghost" data-a="modOpen" data-cid="${c.id}" data-mid="${m.id}" style="margin-top:8px">✎ Редактировать конспект</button>`, false)}
+
+    ${learnSec('h-'+m.id, '✅ Домашние задания', hw.length ? `${hd} из ${hw.length}` : '', `<div class="hwl">${hw.map(h => hwRow(h, false)).join('') || '<p class="empty sm">Заданий пока нет</p>'}</div>`, true,
+      `<button class="btn sm ghost" data-a="hwAdd" data-cid="${c.id}" data-mid="${m.id}" style="margin-top:8px">+ Задание</button>`)}
+  </div>`;
+}
+
+/* ---------- YouTube ---------- */
+function ytTime(t){ t = String(t||''); if(/^\d+$/.test(t)) return +t; const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(t); return m ? (+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0) : 0; }
+/* обычные ссылки, youtu.be, Shorts, embed и live; возвращает id ролика или null */
+function ytParse(u){
+  try {
+    const x = new URL(String(u||'').trim()), h = x.hostname.toLowerCase().replace(/^(www|m|music)\./, '');
+    let id = '', short = false;
+    if(h==='youtu.be') id = x.pathname.split('/').filter(Boolean)[0] || '';
+    else if(h==='youtube.com' || h==='youtube-nocookie.com'){
+      const p = x.pathname.split('/').filter(Boolean);
+      if(p[0]==='watch') id = x.searchParams.get('v') || '';
+      else if(['shorts','embed','live','v'].includes(p[0])){ id = p[1] || ''; short = p[0]==='shorts'; }
+    }
+    if(!/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
+    return {yt:id, short, start: ytTime(x.searchParams.get('t') || x.searchParams.get('start'))};
+  } catch(err) { return null; }
+}
+const ytWatch = v => `https://www.youtube.com/${v.short ? 'shorts/'+v.yt : 'watch?v='+v.yt+(v.start ? '&t='+v.start+'s' : '')}`;
+function videoCard(c, m, v){
+  return `<div class="vid" id="v-${v.id}">
+    <div class="yt ${v.short?'short':''}" id="yt-${v.id}"><button class="yt-thumb" data-a="ytPlay" data-id="${v.id}" style="background-image:url('https://i.ytimg.com/vi/${v.yt}/hqdefault.jpg')" aria-label="Смотреть: ${esc(v.title || 'видео')}"><span class="yt-play">▶</span></button></div>
+    <div class="vid-r"><b>${esc(v.title || 'Видео')}</b><a class="btn sm ghost" href="${esc(ytWatch(v))}" target="_blank" rel="noopener" data-a="ext">YouTube ↗</a>
+      <button class="ic more" data-a="vidMenu" data-cid="${c.id}" data-mid="${m.id}" data-id="${v.id}" title="Ещё" aria-haspopup="menu">⋯</button></div>
+  </div>`;
+}
+function findVideo(id){ for(const c of S.courses) for(const m of c.modules||[]){ const v = (m.videos||[]).find(x => x.id===id); if(v) return {c, m, v}; } return null; }
+/* плеер загружается только по нажатию; просмотр не отмечает лекцию пройденной */
+function ytPlay(id){
+  const f = findVideo(id), box = $id('yt-'+id); if(!f || !box) return;
+  learnRemember(f.c.id, f.m.id, id);
+  const src = `https://www.youtube-nocookie.com/embed/${f.v.yt}?autoplay=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}${f.v.start ? '&start='+f.v.start : ''}`;
+  box.innerHTML = `<iframe src="${src}" title="${esc(f.v.title || 'YouTube')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  const fr = box.querySelector('iframe');
+  fr.addEventListener('load', () => { try { fr.contentWindow.postMessage(JSON.stringify({event:'listening', id}), '*'); } catch(err) {} });
+}
+/* если автор запретил встраивание, YouTube сообщает об ошибке — показываем кнопку «Открыть на YouTube» */
+window.addEventListener('message', e => {
+  if(!/youtube(-nocookie)?\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch(err) { return ''; } })())) return;
+  let d = e.data; if(typeof d==='string'){ try { d = JSON.parse(d); } catch(err) { return; } }
+  if(!d || d.event!=='onError') return;
+  const fr = [...document.querySelectorAll('.yt iframe')].find(f => f.contentWindow===e.source); if(!fr) return;
+  const box = fr.parentElement, f = findVideo(box.id.slice(3)); if(!f) return;
+  box.innerHTML = `<div class="yt-err">Это видео нельзя смотреть внутри кабинета<a class="btn sm" href="${esc(ytWatch(f.v))}" target="_blank" rel="noopener" data-a="ext">Открыть на YouTube ↗</a></div>`;
+});
+function openVideoForm(cid, mid, vid){
+  const lm = learnMod(cid, mid); if(!lm) return;
+  const list = lm.m.videos = lm.m.videos || [], v = vid ? list.find(x => x.id===vid) : null; if(vid && !v) return;
+  openForm({title: v ? 'Видео' : 'Видео с YouTube', values: v || {url:'', title:''}, fields:[
+    {k:'url', label:'Ссылка на YouTube', type:'url', req:true, ph:'https://youtu.be/… или youtube.com/shorts/…'},
+    {k:'title', label:'Название лекции (необязательно)', ph:'Например: Урок 3. Хуки'},
+    {type:'hint', label:'Подходят обычные ссылки, youtu.be и Shorts. Видео не скачивается — кабинет хранит только ссылку.'}
+  ],
+  validate: x => ytParse(x.url) ? '' : 'Это не похоже на ссылку на видео YouTube',
+  onSave: x => { const y = ytParse(x.url), rec = {url:x.url.trim(), title:x.title.trim(), yt:y.yt, short:y.short, start:y.start};
+    if(v) Object.assign(v, rec); else list.push(Object.assign({id:uid()}, rec)); }});
+}
+function deleteVideo(cid, mid, vid){
+  const lm = learnMod(cid, mid), v = lm && (lm.m.videos||[]).find(x => x.id===vid); if(!v) return;
+  if(!confirm(`Удалить ссылку «${v.title || 'видео'}»? Само видео на YouTube не затрагивается.`)) return;
+  lm.m.videos = lm.m.videos.filter(x => x.id!==vid);
+  S.hw.forEach(h => { if(h.lecture===vid) h.lecture = ''; });
+  save(); toast('Ссылка удалена');
+}
+
+/* ---------- файлы (переиспользуют загрузку, ошибки и меню из «Путешествий») ---------- */
+/* владелец файлов: c:<курс> | m:<курс>:<модуль> | h:<задание> */
+function lfOwner(o){
+  const [k, a, b] = String(o||'').split(':');
+  if(k==='c'){ const c = byId(S.courses, a); return c ? {obj:c, label:c.title} : null; }
+  if(k==='m'){ const lm = learnMod(a, b); return lm ? {obj:lm.m, label:lm.m.title} : null; }
+  if(k==='h'){ const h = byId(S.hw, a); return h ? {obj:h, label:h.title} : null; }
+  return null;
+}
+function filesHtml(o, files){
+  if(!files.length) return '<p class="empty sm">Файлов пока нет</p>';
+  return `<div class="lfs">${files.map(f => { const viewable = f.mime==='application/pdf' || /^image\//.test(f.mime) || /^text\//.test(f.mime);
+    return `<div class="lf"><div class="lf-i">${lfIcon(f.mime)}</div><div class="lf-b"><b>${esc(f.title || f.name)}</b><span class="mini">${lfExtOf(f.mime).toUpperCase()} · ${fmtSize(f.size)}</span></div>
+      <button class="btn sm" data-a="${viewable ? 'lfView' : 'lfDl'}" data-o="${o}" data-id="${f.id}">${viewable ? 'Просмотр' : 'Скачать'}</button>
+      <button class="ic more" data-a="lfMenu" data-o="${o}" data-id="${f.id}" title="Ещё" aria-haspopup="menu">⋯</button></div>`; }).join('')}</div>`;
+}
+function lfMenuItems(o, id){
+  return `<button class="mi" data-a="lfDl" data-o="${o}" data-id="${id}">⬇ Скачать</button><button class="mi" data-a="lfRename" data-o="${o}" data-id="${id}">✎ Переименовать</button>`
+    + `<button class="mi" data-a="lfReplace" data-o="${o}" data-id="${id}">⇄ Заменить файл</button><button class="mi danger" data-a="lfDel" data-o="${o}" data-id="${id}">🗑 Удалить</button>`;
+}
+function toggleMenu(el, html){ if(MENU && MENU.anchor===el){ closeMenu(); return; } openMenu(el, html); }
+const lfFind = (o, id) => { const ow = lfOwner(o); const f = ow && (ow.obj.files||[]).find(x => x.id===id); return f ? {ow, f} : null; };
+const lfName = f => { const ext = lfExtOf(f.mime), n = String(f.title || f.name || 'file').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').trim().slice(0,90) || 'file'; return n.toLowerCase().endsWith('.'+ext) ? n : n+'.'+ext; };
+const LURLS = {};
+async function lfUrl(f, download){
+  const k = f.id+(download ? ':dl' : ''), c = LURLS[k]; if(c && c.exp>Date.now()+60e3) return c.u;
+  const {data, error} = await CL.sb.storage.from(SB_LEARN).createSignedUrl(f.path, 3600, download ? {download: lfName(f)} : undefined);
+  if(error || !data || !data.signedUrl) throw error || new Error('нет ссылки');
+  LURLS[k] = {u:data.signedUrl, exp:Date.now()+3600e3}; return data.signedUrl;
+}
+async function lfView(o, id){
+  const x = lfFind(o, id); if(!x) return; const f = x.f;
+  let u; try { u = await lfUrl(f); } catch(err) { toast(docErrText(err, 'learning-files.sql')); return; }
+  const small = (window.matchMedia && matchMedia('(pointer:coarse)').matches) || window.innerWidth<=760;
+  let body;
+  if(/^image\//.test(f.mime)) body = `<img class="doc-img" src="${esc(u)}" alt="${esc(f.title || f.name)}">`;
+  else if(f.mime==='application/pdf') body = small ? `<div class="doc-pdf-m"><b>📄</b><p>PDF удобнее смотреть во встроенном просмотрщике телефона</p><a class="btn" href="${esc(u+PDF_VIEW)}" target="_blank" rel="noopener" data-a="ext">Открыть PDF</a></div>`
+    : `<iframe class="doc-frame" src="${esc(u+PDF_VIEW)}" title="${esc(f.title || f.name)}"></iframe>`;
+  else { let t = ''; try { const r = await fetch(u); t = await r.text(); } catch(err) { toast('Не получилось открыть файл — попробуй скачать'); return; }
+    body = `<div class="txtview">${esc(t.slice(0, 200000))}</div>`; }
+  openModal(`<h3>${esc(f.title || f.name)}</h3><div class="mini" style="margin:-8px 0 14px">${lfExtOf(f.mime).toUpperCase()} · ${fmtSize(f.size)}</div>${body}
+    <div class="mfoot"><button class="btn ghost" data-a="lfDl" data-o="${o}" data-id="${f.id}">⬇ Скачать</button><a class="btn ghost" href="${esc(f.mime==='application/pdf' ? u+PDF_VIEW : u)}" target="_blank" rel="noopener" data-a="ext">Открыть в новой вкладке</a><button class="btn" data-a="mclose">Закрыть</button></div>`, true);
+}
+async function lfDownload(o, id){
+  const x = lfFind(o, id); if(!x) return;
+  try { const u = await lfUrl(x.f, true); const a = document.createElement('a'); a.href = u; a.rel = 'noopener'; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500); }
+  catch(err) { toast(docErrText(err, 'learning-files.sql')); }
+}
+function lfRename(o, id){
+  const x = lfFind(o, id); if(!x) return;
+  openForm({title:'Файл', values:{title:x.f.title || x.f.name}, fields:[{k:'title', label:'Название', req:true}, {type:'hint', label:`Файл: ${x.f.name} · ${fmtSize(x.f.size)}`}],
+    onSave: v => { x.f.title = v.title.trim(); delete LURLS[x.f.id+':dl']; }});
+}
+function lfRemoveFiles(list){
+  const paths = (list||[]).filter(f => f && f.path).map(f => f.path);
+  if(paths.length && CL.sb) CL.sb.storage.from(SB_LEARN).remove(paths).then(r => { if(r && r.error) console.warn('learn remove', r.error); }).catch(() => {});
+}
+function lfDelete(o, id){
+  const x = lfFind(o, id); if(!x) return;
+  if(!confirm(`Удалить файл «${x.f.title || x.f.name}»? Он будет удалён из облака.`)) return;
+  x.ow.obj.files = x.ow.obj.files.filter(f => f.id!==id); lfRemoveFiles([x.f]); save(); toast('Файл удалён');
+}
+function dropModuleData(c, m){
+  const hws = S.hw.filter(h => h.mid===m.id);
+  lfRemoveFiles((m.files||[]).concat(...hws.map(h => h.files||[])));
+  hws.forEach(h => unlinkHw(h.id)); S.hw = S.hw.filter(h => h.mid!==m.id);
+}
+function dropCourseData(c){ (c.modules||[]).forEach(m => dropModuleData(c, m)); lfRemoveFiles(c.files||[]); S.hw = S.hw.filter(h => h.cid!==c.id); }
+
+let LFUP = null;
+function lfPick(o, replaceId){ if(!lfOwner(o)) return; LFUP = {o, replaceId}; const f = $id('lfFile'); f.multiple = !replaceId; f.value = ''; f.click(); }
+document.getElementById('lfFile').addEventListener('change', e => { const files = [...e.target.files]; e.target.value = ''; if(files.length && LFUP) lfOpenUpload(files); else LFUP = null; });
+function lfOpenUpload(files){
+  const ow = lfOwner(LFUP.o); if(!ow) return;
+  LFUP.items = files.slice(0, LFUP.replaceId ? 1 : 20).map(f => { const mime = lfMime(f);
+    const err = !mime ? 'Этот формат не поддерживается — нужен PDF, картинка, DOCX, DOC, ODT, RTF, TXT или MD' : !/^image\//.test(mime) && f.size>LF_MAX ? 'Файл больше 20 МБ — это лимит для одного файла' : '';
+    return {f, mime, id:uid(), err}; });
+  const its = LFUP.items;
+  openModal(`<h3>${LFUP.replaceId ? 'Замена файла' : 'Загрузка файлов'}</h3><div class="mini" style="margin:-8px 0 12px">${esc(ow.label || '')}</div>
+    <div class="ups">${its.map(it => `<div class="up" id="up-${it.id}"><div class="row between gap"><b class="up-n">${esc(it.f.name)}</b><span class="mini">${fmtSize(it.f.size)}</span></div>
+      <div class="bar"><i style="width:0%"></i></div><div class="up-s mini ${it.err?'err':''}">${it.err ? esc(it.err) : 'Готов к загрузке'}</div></div>`).join('')}</div>
+    <p class="muted sm">До 20 МБ на файл: PDF, JPG, PNG, WEBP, DOCX, DOC, ODT, RTF, TXT, MD. Большие фото уменьшаются перед загрузкой. На бесплатном тарифе Supabase — 1 ГБ на все файлы.</p>
+    <div class="mfoot"><button class="btn ghost" data-a="mclose" id="dupCancel">Отмена</button><button class="btn" data-a="lfGo" id="dupGo" ${its.every(i => i.err) ? 'disabled' : ''}>Загрузить</button></div>`);
+}
+async function lfRunUpload(){
+  const up = LFUP; if(!up || up.running) return;
+  up.running = true; CL.hold++;
+  const go = $id('dupGo'); go.disabled = true; go.textContent = 'Загружаю…';
+  let ok = 0, bad = 0;
+  for(const it of up.items){
+    const set = (p, txt, err) => { const row = $id('up-'+it.id); if(!row) return; row.querySelector('.bar i').style.width = p+'%';
+      const st = row.querySelector('.up-s'); st.textContent = txt; st.classList.toggle('err', !!err); };
+    if(it.err){ bad++; continue; }
+    try {
+      let blob = it.f, mime = it.mime;
+      if(/^image\//.test(mime) && blob.size>1.5*1048576){ set(0, 'Уменьшаю фото…'); try { const sm = dataUrlToBlob(await compressImage(blob, 2560, 0.86)); if(sm.size<blob.size){ blob = sm; mime = sm.type; } } catch(err) {} }
+      if(blob.size>LF_MAX) throw {userMsg:'Файл больше 20 МБ — это лимит для одного файла'};
+      const fid = uid(), path = CL.uid+'/'+fid+'.'+lfExtOf(mime);
+      set(0, 'Загружаю… 0%');
+      await uploadWithProgress(SB_LEARN, path, blob, mime, p => set(Math.round(p*100), 'Загружаю… '+Math.round(p*100)+'%'));
+      const ow = lfOwner(up.o); if(!ow) throw {userMsg:'Запись удалили, пока шла загрузка'};
+      const meta = {id:fid, path, name:it.f.name, title:it.f.name.replace(/\.[^.]+$/, '') || 'Файл', mime, size:blob.size, created:Date.now()};
+      ow.obj.files = ow.obj.files || [];
+      if(up.replaceId){ const i = ow.obj.files.findIndex(f => f.id===up.replaceId);
+        if(i>-1){ const old = ow.obj.files[i]; meta.title = old.title || meta.title; ow.obj.files[i] = meta; lfRemoveFiles([old]); } else ow.obj.files.push(meta); }
+      else ow.obj.files.push(meta);
+      save(); set(100, '✓ Загружено'); ok++;
+    } catch(err) { bad++; set(0, docErrText(err, 'learning-files.sql'), true); }
+  }
+  CL.hold--; up.running = false; LFUP = null;
+  if($id('dupGo')){ const g = $id('dupGo'); g.textContent = 'Готово'; g.disabled = false; g.dataset.a = 'mclose'; $id('dupCancel').hidden = true; }
+  toast(bad ? `Загружено ${ok} из ${ok+bad}` : ok===1 ? 'Файл загружен' : `Загружено файлов: ${ok}`);
+}
+
+/* ---------- домашние задания ---------- */
+const hwTasks = id => S.tasks.filter(t => t.hwId===id);
+function hwRow(h, withPlace){
+  const lm = learnMod(h.cid, h.mid), lec = lm && h.lecture && (lm.m.videos||[]).find(v => v.id===h.lecture), plan = hwTasks(h.id);
+  const links = (h.links||[]).filter(safeUrl);
+  return `<div class="hw ${h.done?'done':''}" id="hw-${h.id}"><div class="hw-r">
+      <button class="chk ${h.done?'on':''}" data-a="hwToggle" data-id="${h.id}" title="Отметить выполненным"></button>
+      <div class="hw-b" data-a="${withPlace ? 'hwOpen' : 'hwEdit'}" data-id="${h.id}"><b>${esc(h.title)}</b>
+        <div class="mini">${[withPlace && lm ? `${esc(lm.c.title)} · ${esc(lm.m.title)}` : '', lec ? '▶ '+esc(lec.title || 'Видео') : '', plan.length ? '📅 в плане на '+plan.map(t => fmtD(t.date, {day:'numeric', month:'short'})).join(', ') : '', (h.files||[]).length ? '📎 '+h.files.length : ''].filter(Boolean).join(' · ')}</div>
+        ${!withPlace && (h.desc||'').trim() ? `<p class="hw-d">${esc(h.desc)}</p>` : ''}</div>
+      <button class="ic more" data-a="hwMenu" data-id="${h.id}" title="Ещё" aria-haspopup="menu">⋯</button></div>
+    ${!withPlace && links.length ? `<div class="hw-links">${links.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener" data-a="ext">🔗 ${esc(linkHost(u))}</a>`).join('')}</div>` : ''}
+    ${!withPlace && (h.files||[]).length ? filesHtml('h:'+h.id, h.files) : ''}
+  </div>`;
+}
+function openHwForm(id, cid, mid){
+  const h = id ? byId(S.hw, id) : {id:uid(), cid, mid, title:'', desc:'', lecture:'', done:false, links:[], files:[], created:Date.now()};
+  if(!h) return; const lm = learnMod(h.cid, h.mid); if(!lm) return;
+  const vids = lm.m.videos || [];
+  openForm({title: id ? 'Домашнее задание' : 'Новое задание', wide:true, values:Object.assign({}, h, {linksText:(h.links||[]).join('\n')}), fields:[
+    {k:'title', label:'Название', req:true},
+    {k:'desc', label:'Описание (необязательно)', type:'textarea', rows:3},
+    {k:'lecture', label:'Лекция (необязательно)', type:'select', options:[['', 'Без привязки']].concat(vids.map(v => [v.id, '▶ '+(v.title || 'Видео')]))},
+    {k:'done', label:'Выполнено', type:'check'},
+    {k:'linksText', label:'Ссылки на выполненную работу (по одной в строке, необязательно)', type:'textarea', rows:2, ph:'https://…'},
+    {type:'hint', label:'Файлы с результатом можно прикрепить через «⋯» → «Прикрепить файлы».'}
+  ],
+  validate: v => { const bad = String(v.linksText||'').split('\n').map(x => x.trim()).filter(Boolean).find(x => !safeUrl(x)); return bad ? 'Ссылка должна начинаться с https://' : ''; },
+  onSave: v => { const links = String(v.linksText||'').split('\n').map(x => x.trim()).filter(Boolean); delete v.linksText;
+    const was = h.done; Object.assign(h, v, {links}); if(!id) S.hw.push(h); if(was!==h.done) hwToTasks(h); },
+  onDelete: id ? () => { lfRemoveFiles(h.files||[]); unlinkHw(h.id); del(S.hw, h.id); } : null});
+}
+function deleteHw(id){
+  const h = byId(S.hw, id); if(!h) return;
+  if(!confirm(`Удалить задание «${h.title}»?${(h.files||[]).length ? ' Его файлы будут удалены из облака.' : ''}${hwTasks(id).length ? ' Задача в плане останется как обычная.' : ''}`)) return;
+  lfRemoveFiles(h.files||[]); unlinkHw(id); del(S.hw, id); save(); toast('Задание удалено');
+}
+/* статус задания ⇄ задача в плане: одно и то же «сделано» */
+function hwToggle(id){ const h = byId(S.hw, id); if(!h) return; h.done = !h.done; hwToTasks(h); save(); if(h.done) toast('Задание выполнено ✨'); }
+function hwToTasks(h){ hwTasks(h.id).forEach(t => { t.done = !!h.done; }); }
+function hwFromTask(t){ if(!t || !t.hwId) return; const h = byId(S.hw, t.hwId); if(h && h.done!==!!t.done){ h.done = !!t.done; hwToTasks(h); } }
+function unlinkHw(id){ hwTasks(id).forEach(t => { delete t.hwId; }); }
+function openHwPlan(id){
+  const h = byId(S.hw, id); if(!h) return; const ex = hwTasks(id)[0];
+  openForm({title:'Добавить в план', values:{date: ex ? ex.date : T(), slot: ex ? ex.slot : 'day'}, fields:[
+    {k:'date', label:'Дата', type:'date', req:true, half:1}, {k:'slot', label:'Когда', type:'select', options:SLOTS, half:1},
+    {type:'hint', label: ex ? `Задание уже в плане на ${fmtD(ex.date, {day:'numeric', month:'long'})} — задача перенесётся на выбранную дату, дубль не появится.` : `В календаре появится задача «${h.title}», связанная с этим заданием.`}
+  ],
+  onSave: v => {
+    if(ex){ Object.assign(ex, {date:v.date, slot:v.slot}); hwTasks(id).slice(1).forEach(t => del(S.tasks, t.id)); }
+    else S.tasks.push({id:uid(), date:v.date, slot:v.slot, text:h.title, done:!!h.done, hwId:h.id});
+  }});
+}
+function myHomework(){
+  const all = S.hw.filter(h => learnMod(h.cid, h.mid)), open = all.filter(h => !h.done), done = all.filter(h => h.done);
+  const list = UI.hwf==='done' ? done : UI.hwf==='all' ? all : open;
+  const groups = []; list.forEach(h => { const k = h.cid+'|'+h.mid; let g = groups.find(x => x.k===k); if(!g) groups.push(g = {k, h0:h, items:[]}); g.items.push(h); });
+  return `<div class="tbar"><div class="chips">${[['open',`Не выполнены (${open.length})`],['done',`Выполнены (${done.length})`],['all','Все']].map(([v,l]) => `<button class="chip ${UI.hwf===v?'on':''}" data-a="hwFilter" data-v="${v}">${l}</button>`).join('')}</div></div>
+    ${groups.length ? groups.map(g => { const lm = learnMod(g.h0.cid, g.h0.mid);
+      return `<div class="card" style="margin-bottom:14px"><div class="ch"><div><div class="mini">${esc(lm.c.title)}</div><h2 style="font-size:19px">${esc(lm.m.title)}</h2></div>
+        <button class="btn sm ghost" data-a="modView" data-cid="${lm.c.id}" data-mid="${lm.m.id}">Открыть модуль</button></div>
+        <div class="hwl">${g.items.map(h => hwRow(h, true)).join('')}</div></div>`; }).join('')
+      : `<div class="card"><p class="empty">${UI.hwf==='done' ? 'Выполненных заданий пока нет' : all.length ? 'Все задания выполнены ✨' : 'Заданий пока нет — их можно добавить в модуле курса'}</p></div>`}`;
+}
+
+/* =========================================================
    ОБЛАКО · вход, синхронизация, изображения, перенос
    Каждая запись кабинета хранится отдельной строкой таблицы cabinet_items:
    kind — раздел (tasks, habits, journal…), item_id — id записи, data — сама запись.
    ========================================================= */
-const ARR_KINDS = ['habits','tasks','focus','ideas','refs','journal','courses','books','goals','posts','trips','stops','docs','reports'];
+const ARR_KINDS = ['habits','tasks','focus','ideas','refs','journal','courses','books','goals','posts','trips','stops','docs','reports','hw'];
 const MAP_KINDS = [['habitLog','habit_log'],['days','days'],['weekly','weekly']];
 const SET_KEYS = ['v','clean','habitsSeeded','name','timer','timerCfg','blogSeeded','postsMigrated'];
 const DEL = '-';
