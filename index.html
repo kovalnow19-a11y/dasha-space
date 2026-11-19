@@ -283,6 +283,23 @@ body.dragging-task,body.dragging-task *{cursor:grabbing!important;-webkit-user-s
 .mn{width:26px;height:26px;border-radius:9px;background:#fff;display:grid;place-items:center;font-size:12px;font-weight:800;color:var(--muted);flex:none}
 .mt{flex:1;cursor:pointer;font-weight:600;min-width:140px}
 .mod.done .mt{color:var(--muted);text-decoration:line-through}
+.mprog{min-width:30px;height:26px;padding:0 6px;border-radius:9px;background:#fff;border:2px solid var(--line);display:grid;place-items:center;font-size:11.5px;font-weight:800;color:var(--muted);flex:none}
+.mprog.on{background:var(--green);border-color:var(--green);color:#fff}
+.lesl{display:grid}
+.les{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #e9ede4}
+.les:last-child{border-bottom:0}
+.les .mn{background:#f1f4ec}
+.les-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;border:0;background:none;padding:4px 0;font:inherit;text-align:left;cursor:pointer;color:var(--ink,inherit)}
+.les-t b{font-weight:700;word-break:break-word}
+.les-t:hover b{color:var(--green);text-decoration:underline;text-decoration-color:var(--lilac)}
+.les.done .les-t b{color:var(--muted);text-decoration:line-through}
+.les-d{margin:6px 0 0;white-space:pre-wrap}
+.les.flash{background:#f6eef8;border-radius:14px;box-shadow:0 0 0 6px #f6eef8}
+.les-nav{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+.les-nav .btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;height:auto;padding:10px 14px;text-align:left;min-width:0}
+.les-nav .btn:last-child{align-items:flex-end;text-align:right}
+.les-nav .btn b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+@media(max-width:760px){.les{gap:8px}.les .chk{width:28px;height:28px}.les-t{padding:6px 0}}
 .book{cursor:pointer;background:#f9faf7;border-radius:22px;padding:16px;transition:.15s}
 .book:hover{background:#f1f5ec}
 .quote{font-style:italic;border-left:3px solid var(--lilac);padding-left:10px;margin:10px 0;color:#4a3d4f;font-size:14px}
@@ -1611,16 +1628,17 @@ function openEntry(id, type, prompt){
    САМОРАЗВИТИЕ
    ========================================================= */
 function vSelf(){
-  const mods = S.courses.flatMap(c => c.modules), md = mods.filter(m => m.done).length;
+  const mods = S.courses.flatMap(c => c.modules), md = mods.filter(modDone).length;
   const wk = weekStart(T()), mo = T().slice(0,7);
   const gw = S.goals.filter(g => g.period==='week' && g.key===wk), gm = S.goals.filter(g => g.period==='month' && g.key===mo);
-  const notes = mods.filter(m => (m.notes||'').trim()).length;
+  const notes = mods.filter(m => (m.notes||'').trim()).length + mods.flatMap(lessonsOf).filter(l => (l.notes||'').trim()).length;
   const mv = UI.mod && learnMod(UI.mod.cid, UI.mod.mid);
+  if(mv && UI.mod.lid){ const lv = learnLes(UI.mod.cid, UI.mod.mid, UI.mod.lid); if(lv) return lessonView(lv.c, lv.m, lv.l); UI.mod.lid = null; }
   if(mv) return moduleView(mv.c, mv.m);
   UI.mod = null;
   const hwOpen = S.hw.filter(h => !h.done).length;
   return hero('Саморазвитие','Учусь и расту','Курсы, конспекты, книги и цели', [
-      [pct(md,mods.length)+'%','курсов пройдено'], [`${md}/${mods.length}`,'модулей'],
+      [progPct(mods)+'%','курсов пройдено'], [`${md}/${mods.length}`,'модулей'],
       [`${gw.filter(g=>g.done).length}/${gw.length}`,'целей недели'], [notes,'конспектов']
     ]) + `<div class="tabs">${tabs([['courses','Курсы и цели'], ['hw', `Моя домашка${hwOpen ? ' ('+hwOpen+')' : ''}`]], UI.stab, 'selfTab')}</div>`
     + (UI.stab==='hw' ? myHomework() : `${continueHtml()}<div class="grid">
@@ -1633,18 +1651,19 @@ function vSelf(){
 
 function coursesHtml(){
   return `<div class="ch"><h2>Курсы и обучение</h2><button class="btn sm ghost" data-a="courseNew">+ Курс</button></div>
-  ${S.courses.map(c => { const d = c.modules.filter(m => m.done).length, n = c.modules.length, p = pct(d,n);
+  ${S.courses.map(c => { const d = c.modules.filter(modDone).length, n = c.modules.length, p = progPct(c.modules);
     const ch = S.hw.filter(h => h.cid===c.id), chd = ch.filter(h => h.done).length;
     return `<div class="course">
       <div class="row between"><div><span class="ct">${esc(c.title)}</span><div class="muted sm">${d} из ${n} ${plural(n,'модуля','модулей','модулей')} · ${p}%${ch.length ? ` · домашка ${chd}/${ch.length}` : ''}</div></div>
       <button class="ic" data-a="courseEdit" data-id="${c.id}" title="Изменить курс">✎</button></div>
       <div class="bar big"><i style="width:${p}%"></i></div>
-      ${c.modules.map((m,i) => { const mh = S.hw.filter(h => h.mid===m.id), mhd = mh.filter(h => h.done).length;
-        return `<div class="mod ${m.done?'done':''}">
-        <button class="chk ${m.done?'on':''}" data-a="modToggle" data-cid="${c.id}" data-mid="${m.id}"></button>
+      ${c.modules.map((m,i) => { const mh = S.hw.filter(h => h.mid===m.id), mhd = mh.filter(h => h.done).length, ls = lessonsOf(m), lsd = ls.filter(l => l.done).length;
+        return `<div class="mod ${modDone(m)?'done':''}">
+        ${ls.length ? `<span class="mprog ${lsd===ls.length?'on':''}" title="Пройдено уроков: ${lsd} из ${ls.length}">${lsd}/${ls.length}</span>`
+          : `<button class="chk ${m.done?'on':''}" data-a="modToggle" data-cid="${c.id}" data-mid="${m.id}"></button>`}
         <span class="mn">${i+1}</span>
         <span class="mt" data-a="modView" data-cid="${c.id}" data-mid="${m.id}">${esc(m.title)}</span>
-        ${(m.notes||'').trim() ? '<span class="badge">📝 конспект</span>' : ''}${(m.apply||'').trim() ? '<span class="badge tt">⚡ практика</span>' : ''}${(m.videos||[]).length ? `<span class="badge">▶ ${m.videos.length}</span>` : ''}${(m.files||[]).length ? `<span class="badge">📎 ${m.files.length}</span>` : ''}${mh.length ? `<span class="badge ${mhd===mh.length?'tt':'ig'}">✅ ${mhd}/${mh.length}</span>` : ''}
+        ${ls.length ? `<span class="badge">📚 ${ls.length} ${plural(ls.length,'урок','урока','уроков')}</span>` : ''}${(m.notes||'').trim() ? '<span class="badge">📝 конспект</span>' : ''}${(m.apply||'').trim() ? '<span class="badge tt">⚡ практика</span>' : ''}${(m.videos||[]).length ? `<span class="badge">▶ ${m.videos.length}</span>` : ''}${(m.files||[]).length ? `<span class="badge">📎 ${m.files.length}</span>` : ''}${mh.length ? `<span class="badge ${mhd===mh.length?'tt':'ig'}">✅ ${mhd}/${mh.length}</span>` : ''}
         <button class="btn sm ghost" data-a="modView" data-cid="${c.id}" data-mid="${m.id}">Открыть</button>
       </div>`; }).join('')}
       ${learnSec('c-'+c.id, '📎 Материалы курса', (c.files||[]).length, filesHtml('c:'+c.id, c.files||[]) + `<button class="btn sm ghost" data-a="lfAdd" data-o="c:${c.id}" style="margin-top:8px">+ Файлы</button>`, false)}
@@ -1683,7 +1702,7 @@ function openModule(cid, mid){
   const m = byId(c.modules,mid); if(!m) return;
   openForm({title:'Модуль и конспект', wide:true, values:m, fields:[
     {k:'title', label:'Название модуля', req:true},
-    {k:'done', label:'Модуль пройден', type:'check'},
+    lessonsOf(m).length ? {type:'hint', label:'Прогресс модуля считается по пройденным урокам.'} : {k:'done', label:'Модуль пройден', type:'check'},
     {k:'notes', label:'Конспект лекции', type:'textarea', rows:10},
     {k:'apply', label:'Как применю на практике', type:'textarea', rows:3}
   ], onSave: v => Object.assign(m,v), onDelete: () => { dropModuleData(c, m); del(c.modules,mid); UI.mod = null; }});
@@ -1954,12 +1973,26 @@ const ACT = {
   modView: d => openModView(d.cid, d.mid),
   modBack: () => { UI.mod = null; render(); window.scrollTo(0,0); },
   selfTab: d => { UI.stab = d.v; render(); },
-  learnContinue: () => { const l = learnLast(); if(l) openModView(l.cid, l.mid, l.vid ? 'v-'+l.vid : ''); },
+  learnContinue: () => { const l = learnLast(); if(l) openModView(l.cid, l.mid, l.vid ? 'v-'+l.vid : '', l.lid); },
+  lesAdd: d => { const inp = document.querySelector(`[data-newles="${d.mid}"]`), v = inp ? inp.value.trim() : '', lm = learnMod(d.cid, d.mid); if(!v || !lm) return;
+    (lm.m.lessons = lessonsOf(lm.m)).push({id:uid(), title:v, desc:'', done:false, notes:'', videos:[], files:[], created:Date.now()}); save();
+    const ni = document.querySelector(`[data-newles="${d.mid}"]`); if(ni) ni.focus(); },
+  lesView: d => openModView(d.cid, d.mid, '', d.lid),
+  lesBack: () => { const lid = UI.mod && UI.mod.lid; if(UI.mod) UI.mod.lid = null; render(); window.scrollTo(0,0);
+    const el = lid && $id('les-'+lid); if(el){ el.scrollIntoView({block:'center'}); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); } },
+  lesToggle: d => { const x = learnLes(d.cid, d.mid, d.lid); if(!x) return; x.l.done = !x.l.done; save();
+    if(x.l.done) toast(modDone(x.m) ? 'Модуль пройден 🎉' : 'Урок пройден ✨'); },
+  lesEdit: d => openLessonForm(d.cid, d.mid, d.lid),
+  lesMenu: (d, el) => { const x = learnLes(d.cid, d.mid, d.lid); if(!x) return; const ls = lessonsOf(x.m), i = ls.indexOf(x.l), a = `data-cid="${d.cid}" data-mid="${d.mid}" data-lid="${d.lid}"`;
+    toggleMenu(el, `<button class="mi" data-a="lesEdit" ${a}>✎ Изменить</button>${i>0 ? `<button class="mi" data-a="lesUp" ${a}>↑ Выше</button>` : ''}${i<ls.length-1 ? `<button class="mi" data-a="lesDown" ${a}>↓ Ниже</button>` : ''}<button class="mi danger" data-a="lesDel" ${a}>🗑 Удалить</button>`); },
+  lesUp: d => moveLesson(d.cid, d.mid, d.lid, -1),
+  lesDown: d => moveLesson(d.cid, d.mid, d.lid, 1),
+  lesDel: d => deleteLesson(d.cid, d.mid, d.lid),
   secTog: d => { secSet(d.k, !secOpen(d.k, d.def==='1')); render(); },
-  vidAdd: d => openVideoForm(d.cid, d.mid, null),
-  vidMenu: (d, el) => toggleMenu(el, `<button class="mi" data-a="vidEdit" data-cid="${d.cid}" data-mid="${d.mid}" data-id="${d.id}">✎ Изменить</button><button class="mi danger" data-a="vidDel" data-cid="${d.cid}" data-mid="${d.mid}" data-id="${d.id}">🗑 Удалить</button>`),
-  vidEdit: d => openVideoForm(d.cid, d.mid, d.id),
-  vidDel: d => deleteVideo(d.cid, d.mid, d.id),
+  vidAdd: d => openVideoForm(d.cid, d.mid, null, d.lid),
+  vidMenu: (d, el) => { const a = `data-cid="${d.cid}" data-mid="${d.mid}" data-lid="${d.lid||''}" data-id="${d.id}"`; toggleMenu(el, `<button class="mi" data-a="vidEdit" ${a}>✎ Изменить</button><button class="mi danger" data-a="vidDel" ${a}>🗑 Удалить</button>`); },
+  vidEdit: d => openVideoForm(d.cid, d.mid, d.id, d.lid),
+  vidDel: d => deleteVideo(d.cid, d.mid, d.id, d.lid),
   ytPlay: d => ytPlay(d.id),
   lfAdd: d => lfPick(d.o, null),
   lfMenu: (d, el) => toggleMenu(el, lfMenuItems(d.o, d.id)),
@@ -1969,14 +2002,14 @@ const ACT = {
   lfReplace: d => lfPick(d.o, d.id),
   lfDel: d => lfDelete(d.o, d.id),
   lfGo: () => lfRunUpload(),
-  hwAdd: d => openHwForm(null, d.cid, d.mid),
+  hwAdd: d => openHwForm(null, d.cid, d.mid, d.lid),
   hwEdit: d => openHwForm(d.id),
   hwToggle: d => hwToggle(d.id),
   hwMenu: (d, el) => toggleMenu(el, `<button class="mi" data-a="hwEdit" data-id="${d.id}">✎ Изменить</button><button class="mi" data-a="lfAdd" data-o="h:${d.id}">📎 Прикрепить файлы</button><button class="mi" data-a="hwPlan" data-id="${d.id}">📅 Добавить в план</button><button class="mi danger" data-a="hwDel" data-id="${d.id}">🗑 Удалить</button>`),
   hwDel: d => deleteHw(d.id),
   hwPlan: d => openHwPlan(d.id),
   hwPlanGo: d => hwPlanSave(d.id),
-  hwOpen: d => { const h = byId(S.hw, d.id); if(h) openModView(h.cid, h.mid, 'hw-'+h.id); },
+  hwOpen: d => { const h = byId(S.hw, d.id); if(h) openModView(h.cid, h.mid, 'hw-'+h.id, h.lid); },
   hwFilter: d => { UI.hwf = d.v; render(); },
   modAdd: d => { const inp = document.querySelector(`[data-newmod="${d.cid}"]`), v = inp.value.trim(), c = byId(S.courses,d.cid); if(!v || !c) return;
     c.modules.push({id:uid(), title:v, done:false, notes:'', apply:''}); save(); },
@@ -3217,6 +3250,16 @@ const lfMime = f => LF_TYPES[lfExt(f.name)] || (Object.values(LF_TYPES).includes
 const lfExtOf = m => Object.keys(LF_TYPES).find(k => LF_TYPES[k]===m && k!=='jpeg') || 'bin';
 const lfIcon = m => m==='application/pdf' ? 'PDF' : /^image\//.test(m) ? '🖼' : /^text\//.test(m) ? 'TXT' : 'DOC';
 const learnMod = (cid, mid) => { const c = byId(S.courses, cid), m = c && byId(c.modules||[], mid); return m ? {c, m} : null; };
+/* уроки — вложенный список m.lessons внутри модуля (курс хранится одной строкой в Supabase, уроки синхронизируются вместе с ним).
+   У урока свои videos, files, notes; его домашка — те же записи S.hw с полем lid. Без lid — материалы и домашка всего модуля */
+const lessonsOf = m => (m && m.lessons) || [];
+const learnLes = (cid, mid, lid) => { const lm = learnMod(cid, mid), l = lm && lid ? byId(lessonsOf(lm.m), lid) : null; return l ? {c:lm.c, m:lm.m, l} : null; };
+/* «коробка» материалов: урок, если он указан, иначе сам модуль */
+const learnBox = (cid, mid, lid) => { if(!lid){ const lm = learnMod(cid, mid); return lm ? {c:lm.c, m:lm.m, l:null, box:lm.m} : null; } const x = learnLes(cid, mid, lid); return x ? Object.assign(x, {box:x.l}) : null; };
+/* прогресс: модуль с уроками — по пройденным урокам; без уроков — ручная отметка, как раньше */
+const modProg = m => { const ls = lessonsOf(m); return ls.length ? ls.filter(l => l.done).length/ls.length : (m.done ? 1 : 0); };
+const modDone = m => modProg(m) >= 1;
+const progPct = mods => mods.length ? Math.round(mods.reduce((a,m) => a+modProg(m), 0)/mods.length*100) : 0;
 
 /* ---------- сворачиваемые секции и «продолжить обучение» (только удобство вида в этом браузере) ---------- */
 function secMap(){ try { return JSON.parse(localStorage.getItem('da_learn_sec') || '{}') || {}; } catch(err) { return {}; } }
@@ -3227,17 +3270,18 @@ function learnSec(k, title, count, body, def, extra){
   return `<div class="lsec"><button class="lsec-h" data-a="secTog" data-k="${k}" data-def="${def?1:0}" aria-expanded="${open}"><b>${title}</b><span class="mini">${count!=null && count!=='' ? count : ''}</span><span class="mini">${open ? 'Свернуть ▴' : 'Развернуть ▾'}</span></button>
     ${open ? `<div class="lsec-b">${body}</div>` : ''}${extra || ''}</div>`;
 }
-function learnLast(){ try { const l = JSON.parse(localStorage.getItem('da_learn_last') || 'null'); return l && learnMod(l.cid, l.mid) ? l : null; } catch(err) { return null; } }
-function learnRemember(cid, mid, vid){ const l = learnLast() || {}; const v = {cid, mid, vid: vid || (l.cid===cid && l.mid===mid ? l.vid : '')}; try { localStorage.setItem('da_learn_last', JSON.stringify(v)); } catch(err) {} }
+function learnLast(){ try { const l = JSON.parse(localStorage.getItem('da_learn_last') || 'null'); if(!l || !learnMod(l.cid, l.mid)) return null; if(l.lid && !learnLes(l.cid, l.mid, l.lid)){ l.lid = ''; l.vid = ''; } return l; } catch(err) { return null; } }
+function learnRemember(cid, mid, vid, lid){ const l = learnLast() || {}; lid = lid || ''; const v = {cid, mid, lid, vid: vid || (l.cid===cid && l.mid===mid && (l.lid||'')===lid ? l.vid : '')}; try { localStorage.setItem('da_learn_last', JSON.stringify(v)); } catch(err) {} }
 function continueHtml(){
   const l = learnLast(); if(!l) return '';
-  const {c, m} = learnMod(l.cid, l.mid), v = l.vid && (m.videos||[]).find(x => x.id===l.vid);
-  return `<div class="cont"><div><div class="mini">Продолжить обучение</div><b>${esc(c.title)} → ${esc(m.title)}</b>${v ? `<div class="muted sm">▶ ${esc(v.title || 'Видео')}</div>` : ''}</div>
+  const {c, m, box} = learnBox(l.cid, l.mid, l.lid), v = l.vid && (box.videos||[]).find(x => x.id===l.vid);
+  return `<div class="cont"><div><div class="mini">Продолжить обучение</div><b>${esc(c.title)} → ${esc(m.title)}${l.lid ? ' → '+esc(box.title) : ''}</b>${v ? `<div class="muted sm">▶ ${esc(v.title || 'Видео')}</div>` : ''}</div>
     <button class="btn sm" data-a="learnContinue">Продолжить →</button></div>`;
 }
-function openModView(cid, mid, focusId){
+function openModView(cid, mid, focusId, lid){
   if(!learnMod(cid, mid)) return;
-  UI.mod = {cid, mid}; UI.stab = 'courses'; learnRemember(cid, mid);
+  lid = lid && learnLes(cid, mid, lid) ? lid : null;
+  UI.mod = {cid, mid, lid}; UI.stab = 'courses'; learnRemember(cid, mid, '', lid);
   if(view!=='self') go('self'); else { render(); window.scrollTo(0,0); }
   if(focusId){ const el = $id(focusId); if(el){ el.scrollIntoView({behavior:'smooth', block:'center'}); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2200); } }
 }
@@ -3245,29 +3289,106 @@ function openModView(cid, mid, focusId){
 /* ---------- страница модуля ---------- */
 function moduleView(c, m){
   const hw = S.hw.filter(h => h.mid===m.id), hd = hw.filter(h => h.done).length, vids = m.videos || [], idx = c.modules.indexOf(m);
+  const ls = lessonsOf(m), lsd = ls.filter(l => l.done).length, mhw = hw.filter(h => !h.lid), mhd = mhw.filter(h => h.done).length;
   return `<div class="trip-nav"><button class="btn ghost sm" data-a="modBack">← Все курсы</button><button class="btn ghost sm" data-a="modOpen" data-cid="${c.id}" data-mid="${m.id}">✎ Название и конспект</button></div>
   <div class="mcard">
     <div class="mhead"><div style="min-width:0"><div class="hero-k">${esc(c.title)} · модуль ${idx+1}</div><h1>${esc(m.title)}</h1></div>
-      <div class="row gap"><button class="chk ${m.done?'on':''}" data-a="modToggle" data-cid="${c.id}" data-mid="${m.id}" title="Отметить модуль пройденным"></button><span class="sm">${m.done ? 'Модуль пройден' : 'Отметить пройденным'}</span></div></div>
+      ${ls.length ? `<span class="sm"><b>${modDone(m) ? '✓ Модуль пройден' : `Пройдено уроков: ${lsd} из ${ls.length}`}</b></span>`
+        : `<div class="row gap"><button class="chk ${m.done?'on':''}" data-a="modToggle" data-cid="${c.id}" data-mid="${m.id}" title="Отметить модуль пройденным"></button><span class="sm">${m.done ? 'Модуль пройден' : 'Отметить пройденным'}</span></div>`}</div>
     <div class="rep-k" style="margin-top:12px">
-      <div class="hs"><b>${m.done ? '✓' : '—'}</b><span>прохождение (вручную)</span></div>
+      ${ls.length ? `<div class="hs"><b>${lsd}/${ls.length}</b><span>уроков пройдено</span></div>` : `<div class="hs"><b>${m.done ? '✓' : '—'}</b><span>прохождение (вручную)</span></div>`}
       <div class="hs"><b>${hd}/${hw.length}</b><span>домашка выполнена</span></div>
-      <div class="hs"><b>${vids.length}</b><span>${plural(vids.length,'видео','видео','видео')}</span></div></div>
-    ${hw.length ? `<div class="bar" style="margin-top:4px"><i style="width:${pct(hd, hw.length)}%"></i></div>` : ''}
+      <div class="hs"><b>${vids.length + ls.reduce((a,l) => a+(l.videos||[]).length, 0)}</b><span>видео</span></div></div>
+    ${ls.length ? `<div class="bar" style="margin-top:4px"><i style="width:${Math.round(modProg(m)*100)}%"></i></div>` : hw.length ? `<div class="bar" style="margin-top:4px"><i style="width:${pct(hd, hw.length)}%"></i></div>` : ''}
 
-    ${learnSec('v-'+m.id, '▶ Видео лекций', vids.length || '', vids.length ? `<div class="vids">${vids.map(v => videoCard(c, m, v)).join('')}</div>` : '<p class="empty sm">Пока нет видео — добавь ссылку на YouTube</p>', true,
+    ${learnSec('l-'+m.id, '📚 Уроки', ls.length ? `${lsd} из ${ls.length}` : '', `<div class="lesl">${ls.map((l,i) => lessonRow(c, m, l, i)).join('') || '<p class="empty sm">Уроков пока нет. Материалы ниже относятся ко всему модулю.</p>'}</div>`, true,
+      `<div class="addrow"><input data-newles="${m.id}" data-enter="lesAdd" data-cid="${c.id}" data-mid="${m.id}" placeholder="Новый урок…" aria-label="Новый урок"><button class="ic plus" data-a="lesAdd" data-cid="${c.id}" data-mid="${m.id}" title="Добавить урок">+</button></div>`)}
+
+    ${learnSec('v-'+m.id, ls.length ? '▶ Видео всего модуля' : '▶ Видео лекций', vids.length || '', vids.length ? `<div class="vids">${vids.map(v => videoCard(c, m, v)).join('')}</div>` : '<p class="empty sm">Пока нет видео — добавь ссылку на YouTube</p>', true,
       `<button class="btn sm ghost" data-a="vidAdd" data-cid="${c.id}" data-mid="${m.id}" style="margin-top:8px">+ Видео с YouTube</button>`)}
 
     ${learnSec('f-'+m.id, '📎 Материалы модуля и конспекта', (m.files||[]).length || '', filesHtml(`m:${c.id}:${m.id}`, m.files||[]) + `<button class="btn sm ghost" data-a="lfAdd" data-o="m:${c.id}:${m.id}" style="margin-top:8px">+ Файлы</button>`
       + ((c.files||[]).length ? `<div class="lbl">Материалы всего курса</div>${filesHtml('c:'+c.id, c.files)}` : ''), false)}
 
-    ${learnSec('n-'+m.id, '📝 Конспект', (m.notes||'').trim() ? '' : 'пусто', `${(m.notes||'').trim() ? `<p class="rep-l">${esc(m.notes)}</p>` : '<p class="empty sm">Конспекта пока нет</p>'}
+    ${learnSec('n-'+m.id, ls.length ? '📝 Конспект модуля' : '📝 Конспект', (m.notes||'').trim() ? '' : 'пусто', `${(m.notes||'').trim() ? `<p class="rep-l">${esc(m.notes)}</p>` : '<p class="empty sm">Конспекта пока нет</p>'}
       ${(m.apply||'').trim() ? `<div class="lbl">Как применю на практике</div><p class="rep-l">${esc(m.apply)}</p>` : ''}
       <button class="btn sm ghost" data-a="modOpen" data-cid="${c.id}" data-mid="${m.id}" style="margin-top:8px">✎ Редактировать конспект</button>`, false)}
 
-    ${learnSec('h-'+m.id, '✅ Домашние задания', hw.length ? `${hd} из ${hw.length}` : '', `<div class="hwl">${hw.map(h => hwRow(h, false)).join('') || '<p class="empty sm">Заданий пока нет</p>'}</div>`, true,
+    ${learnSec('h-'+m.id, ls.length ? '✅ Домашка всего модуля' : '✅ Домашние задания', mhw.length ? `${mhd} из ${mhw.length}` : '', `<div class="hwl">${mhw.map(h => hwRow(h, false)).join('') || '<p class="empty sm">Заданий пока нет</p>'}</div>`, true,
       `<button class="btn sm ghost" data-a="hwAdd" data-cid="${c.id}" data-mid="${m.id}" style="margin-top:8px">+ Задание</button>`)}
   </div>`;
+}
+
+/* ---------- уроки ---------- */
+function lessonRow(c, m, l, i){
+  const hw = S.hw.filter(h => h.lid===l.id), hd = hw.filter(h => h.done).length;
+  const info = [(l.videos||[]).length ? '▶ '+l.videos.length : '', (l.files||[]).length ? '📎 '+l.files.length : '', (l.notes||'').trim() ? '📝' : '', hw.length ? `✅ ${hd}/${hw.length}` : ''].filter(Boolean).join(' · ');
+  return `<div class="les ${l.done?'done':''}" id="les-${l.id}">
+    <button class="chk ${l.done?'on':''}" data-a="lesToggle" data-cid="${c.id}" data-mid="${m.id}" data-lid="${l.id}" title="${l.done ? 'Урок пройден' : 'Отметить урок пройденным'}" aria-label="Урок ${i+1} пройден"></button>
+    <span class="mn">${i+1}</span>
+    <button class="les-t" data-a="lesView" data-cid="${c.id}" data-mid="${m.id}" data-lid="${l.id}"><b>${esc(l.title)}</b>${info ? `<span class="mini">${info}</span>` : ''}</button>
+    <button class="ic more" data-a="lesMenu" data-cid="${c.id}" data-mid="${m.id}" data-lid="${l.id}" title="Ещё" aria-haspopup="menu">⋯</button>
+  </div>`;
+}
+function lessonView(c, m, l){
+  const ls = lessonsOf(m), i = ls.indexOf(l), prev = ls[i-1], next = ls[i+1], mi = c.modules.indexOf(m);
+  const hw = S.hw.filter(h => h.lid===l.id), hd = hw.filter(h => h.done).length, vids = l.videos || [], own = `l:${c.id}:${m.id}:${l.id}`;
+  const d = `data-cid="${c.id}" data-mid="${m.id}"`, step = (x, dir) => x ? `<button class="btn ghost sm" data-a="lesView" ${d} data-lid="${x.id}" title="${esc(x.title)}">${dir<0 ? '← Урок '+i : 'Урок '+(i+2)+' →'}</button>` : '';
+  return `<div class="trip-nav"><button class="btn ghost sm" data-a="lesBack">← ${esc(m.title)}</button>
+    <div class="row gap">${step(prev, -1)}${step(next, 1)}<button class="btn ghost sm" data-a="lesEdit" ${d} data-lid="${l.id}">✎ Урок</button></div></div>
+  <div class="mcard">
+    <div class="mhead"><div style="min-width:0"><div class="hero-k">${esc(c.title)} · модуль ${mi+1} · урок ${i+1} из ${ls.length}</div><h1>${esc(l.title)}</h1>
+      ${(l.desc||'').trim() ? `<p class="muted les-d">${esc(l.desc)}</p>` : ''}</div>
+      <div class="row gap"><button class="chk ${l.done?'on':''}" data-a="lesToggle" ${d} data-lid="${l.id}" title="Отметить урок пройденным"></button><span class="sm">${l.done ? 'Урок пройден' : 'Отметить пройденным'}</span></div></div>
+    <div class="rep-k" style="margin-top:12px">
+      <div class="hs"><b>${l.done ? '✓' : '—'}</b><span>урок пройден</span></div>
+      <div class="hs"><b>${hd}/${hw.length}</b><span>домашка выполнена</span></div>
+      <div class="hs"><b>${vids.length}</b><span>видео</span></div></div>
+
+    ${learnSec('lv-'+l.id, '▶ Видео урока', vids.length || '', vids.length ? `<div class="vids">${vids.map(v => videoCard(c, m, v, l)).join('')}</div>` : '<p class="empty sm">Пока нет видео — добавь ссылку на YouTube</p>', true,
+      `<button class="btn sm ghost" data-a="vidAdd" ${d} data-lid="${l.id}" style="margin-top:8px">+ Видео с YouTube</button>`)}
+
+    ${learnSec('lf-'+l.id, '📎 Материалы урока', (l.files||[]).length || '', filesHtml(own, l.files||[]) + `<button class="btn sm ghost" data-a="lfAdd" data-o="${own}" style="margin-top:8px">+ Файлы</button>`
+      + ((m.files||[]).length ? `<div class="lbl">Материалы всего модуля</div>${filesHtml(`m:${c.id}:${m.id}`, m.files)}` : '')
+      + ((c.files||[]).length ? `<div class="lbl">Материалы всего курса</div>${filesHtml('c:'+c.id, c.files)}` : ''), true)}
+
+    ${learnSec('ln-'+l.id, '📝 Конспект урока', (l.notes||'').trim() ? '' : 'пусто', `${(l.notes||'').trim() ? `<p class="rep-l">${esc(l.notes)}</p>` : '<p class="empty sm">Конспекта пока нет</p>'}
+      <button class="btn sm ghost" data-a="lesEdit" ${d} data-lid="${l.id}" style="margin-top:8px">✎ Редактировать конспект</button>`, true)}
+
+    ${learnSec('lh-'+l.id, '✅ Домашние задания урока', hw.length ? `${hd} из ${hw.length}` : '', `<div class="hwl">${hw.map(h => hwRow(h, false)).join('') || '<p class="empty sm">Заданий пока нет</p>'}</div>`, true,
+      `<button class="btn sm ghost" data-a="hwAdd" ${d} data-lid="${l.id}" style="margin-top:8px">+ Задание</button>`)}
+
+    <div class="les-nav">${prev ? `<button class="btn ghost" data-a="lesView" ${d} data-lid="${prev.id}"><span class="mini">← Урок ${i}</span><b>${esc(prev.title)}</b></button>` : '<span></span>'}
+      ${next ? `<button class="btn ghost" data-a="lesView" ${d} data-lid="${next.id}"><span class="mini">Урок ${i+2} →</span><b>${esc(next.title)}</b></button>` : `<button class="btn ghost" data-a="lesBack"><span class="mini">Это последний урок</span><b>К модулю</b></button>`}</div>
+  </div>`;
+}
+function openLessonForm(cid, mid, lid){
+  const x = learnLes(cid, mid, lid); if(!x) return;
+  const {c, m, l} = x, ls = lessonsOf(m);
+  openForm({title:'Урок', wide:true, values:{title:l.title, pos:ls.indexOf(l)+1, desc:l.desc||'', done:!!l.done, notes:l.notes||''}, fields:[
+    {k:'title', label:'Название урока', req:true},
+    {k:'pos', label:`Порядковый номер (1–${ls.length})`, type:'number', half:1},
+    {k:'done', label:'Урок пройден', type:'check', half:1},
+    {k:'desc', label:'Описание (необязательно)', type:'textarea', rows:2},
+    {k:'notes', label:'Конспект урока', type:'textarea', rows:10}
+  ],
+  onSave: v => { Object.assign(l, {title:v.title.trim(), desc:v.desc, done:!!v.done, notes:v.notes});
+    const to = Math.max(1, Math.min(ls.length, Math.round(+v.pos) || 1)) - 1, from = ls.indexOf(l);
+    if(to!==from){ ls.splice(from, 1); ls.splice(to, 0, l); } },
+  onDelete: () => { dropLessonData(l); m.lessons = ls.filter(y => y.id!==l.id); if(UI.mod && UI.mod.lid===l.id) UI.mod.lid = null; }});
+}
+function deleteLesson(cid, mid, lid){
+  const x = learnLes(cid, mid, lid); if(!x) return;
+  const hw = S.hw.filter(h => h.lid===lid).length, fl = (x.l.files||[]).length;
+  if(!confirm(`Удалить урок «${x.l.title}»?${(x.l.videos||[]).length || fl || hw ? ` Вместе с ним удалятся его видео-ссылки${fl ? ', файлы' : ''}${hw ? ' и домашние задания' : ''}.` : ''} Материалы модуля останутся.`)) return;
+  dropLessonData(x.l); x.m.lessons = lessonsOf(x.m).filter(y => y.id!==lid);
+  if(UI.mod && UI.mod.lid===lid) UI.mod.lid = null;
+  save(); toast('Урок удалён');
+}
+function moveLesson(cid, mid, lid, dir){
+  const x = learnLes(cid, mid, lid); if(!x) return;
+  const ls = lessonsOf(x.m), i = ls.indexOf(x.l), j = i + dir; if(j<0 || j>=ls.length) return;
+  [ls[i], ls[j]] = [ls[j], ls[i]]; save();
 }
 
 /* ---------- YouTube ---------- */
@@ -3288,18 +3409,19 @@ function ytParse(u){
   } catch(err) { return null; }
 }
 const ytWatch = v => `https://www.youtube.com/${v.short ? 'shorts/'+v.yt : 'watch?v='+v.yt+(v.start ? '&t='+v.start+'s' : '')}`;
-function videoCard(c, m, v){
+function videoCard(c, m, v, l){
   return `<div class="vid" id="v-${v.id}">
     <div class="yt ${v.short?'short':''}" id="yt-${v.id}"><button class="yt-thumb" data-a="ytPlay" data-id="${v.id}" style="background-image:url('https://i.ytimg.com/vi/${v.yt}/hqdefault.jpg')" aria-label="Смотреть: ${esc(v.title || 'видео')}"><span class="yt-play">▶</span></button></div>
     <div class="vid-r"><b>${esc(v.title || 'Видео')}</b><a class="btn sm ghost" href="${esc(ytWatch(v))}" target="_blank" rel="noopener" data-a="ext">YouTube ↗</a>
-      <button class="ic more" data-a="vidMenu" data-cid="${c.id}" data-mid="${m.id}" data-id="${v.id}" title="Ещё" aria-haspopup="menu">⋯</button></div>
+      <button class="ic more" data-a="vidMenu" data-cid="${c.id}" data-mid="${m.id}" data-lid="${l ? l.id : ''}" data-id="${v.id}" title="Ещё" aria-haspopup="menu">⋯</button></div>
   </div>`;
 }
-function findVideo(id){ for(const c of S.courses) for(const m of c.modules||[]){ const v = (m.videos||[]).find(x => x.id===id); if(v) return {c, m, v}; } return null; }
+function findVideo(id){ for(const c of S.courses) for(const m of c.modules||[]){ const v = (m.videos||[]).find(x => x.id===id); if(v) return {c, m, l:null, v};
+  for(const l of lessonsOf(m)){ const w = (l.videos||[]).find(x => x.id===id); if(w) return {c, m, l, v:w}; } } return null; }
 /* плеер загружается только по нажатию; просмотр не отмечает лекцию пройденной */
 function ytPlay(id){
   const f = findVideo(id), box = $id('yt-'+id); if(!f || !box) return;
-  learnRemember(f.c.id, f.m.id, id);
+  learnRemember(f.c.id, f.m.id, id, f.l ? f.l.id : '');
   const src = `https://www.youtube-nocookie.com/embed/${f.v.yt}?autoplay=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}${f.v.start ? '&start='+f.v.start : ''}`;
   box.innerHTML = `<iframe src="${src}" title="${esc(f.v.title || 'YouTube')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
   const fr = box.querySelector('iframe');
@@ -3314,9 +3436,9 @@ window.addEventListener('message', e => {
   const box = fr.parentElement, f = findVideo(box.id.slice(3)); if(!f) return;
   box.innerHTML = `<div class="yt-err">Это видео нельзя смотреть внутри кабинета<a class="btn sm" href="${esc(ytWatch(f.v))}" target="_blank" rel="noopener" data-a="ext">Открыть на YouTube ↗</a></div>`;
 });
-function openVideoForm(cid, mid, vid){
-  const lm = learnMod(cid, mid); if(!lm) return;
-  const list = lm.m.videos = lm.m.videos || [], v = vid ? list.find(x => x.id===vid) : null; if(vid && !v) return;
+function openVideoForm(cid, mid, vid, lid){
+  const lm = learnBox(cid, mid, lid); if(!lm) return;
+  const list = lm.box.videos = lm.box.videos || [], v = vid ? list.find(x => x.id===vid) : null; if(vid && !v) return;
   openForm({title: v ? 'Видео' : 'Видео с YouTube', values: v || {url:'', title:''}, fields:[
     {k:'url', label:'Ссылка на YouTube', type:'url', req:true, ph:'https://youtu.be/… или youtube.com/shorts/…'},
     {k:'title', label:'Название лекции (необязательно)', ph:'Например: Урок 3. Хуки'},
@@ -3326,18 +3448,19 @@ function openVideoForm(cid, mid, vid){
   onSave: x => { const y = ytParse(x.url), rec = {url:x.url.trim(), title:x.title.trim(), yt:y.yt, short:y.short, start:y.start};
     if(v) Object.assign(v, rec); else list.push(Object.assign({id:uid()}, rec)); }});
 }
-function deleteVideo(cid, mid, vid){
-  const lm = learnMod(cid, mid), v = lm && (lm.m.videos||[]).find(x => x.id===vid); if(!v) return;
+function deleteVideo(cid, mid, vid, lid){
+  const lm = learnBox(cid, mid, lid), v = lm && (lm.box.videos||[]).find(x => x.id===vid); if(!v) return;
   if(!confirm(`Удалить ссылку «${v.title || 'видео'}»? Само видео на YouTube не затрагивается.`)) return;
-  lm.m.videos = lm.m.videos.filter(x => x.id!==vid);
+  lm.box.videos = lm.box.videos.filter(x => x.id!==vid);
   S.hw.forEach(h => { if(h.lecture===vid) h.lecture = ''; });
   save(); toast('Ссылка удалена');
 }
 
 /* ---------- файлы (переиспользуют загрузку, ошибки и меню из «Путешествий») ---------- */
-/* владелец файлов: c:<курс> | m:<курс>:<модуль> | h:<задание> */
+/* владелец файлов: c:<курс> | m:<курс>:<модуль> | l:<курс>:<модуль>:<урок> | h:<задание> */
 function lfOwner(o){
-  const [k, a, b] = String(o||'').split(':');
+  const [k, a, b, x] = String(o||'').split(':');
+  if(k==='l'){ const ll = learnLes(a, b, x); return ll ? {obj:ll.l, label:ll.l.title} : null; }
   if(k==='c'){ const c = byId(S.courses, a); return c ? {obj:c, label:c.title} : null; }
   if(k==='m'){ const lm = learnMod(a, b); return lm ? {obj:lm.m, label:lm.m.title} : null; }
   if(k==='h'){ const h = byId(S.hw, a); return h ? {obj:h, label:h.title} : null; }
@@ -3396,9 +3519,14 @@ function lfDelete(o, id){
   if(!confirm(`Удалить файл «${x.f.title || x.f.name}»? Он будет удалён из облака.`)) return;
   x.ow.obj.files = x.ow.obj.files.filter(f => f.id!==id); lfRemoveFiles([x.f]); save(); toast('Файл удалён');
 }
+function dropLessonData(l){
+  const hws = S.hw.filter(h => h.lid===l.id);
+  lfRemoveFiles((l.files||[]).concat(...hws.map(h => h.files||[])));
+  hws.forEach(h => unlinkHw(h.id)); S.hw = S.hw.filter(h => h.lid!==l.id);
+}
 function dropModuleData(c, m){
   const hws = S.hw.filter(h => h.mid===m.id);
-  lfRemoveFiles((m.files||[]).concat(...hws.map(h => h.files||[])));
+  lfRemoveFiles((m.files||[]).concat(...lessonsOf(m).map(l => l.files||[]), ...hws.map(h => h.files||[])));
   hws.forEach(h => unlinkHw(h.id)); S.hw = S.hw.filter(h => h.mid!==m.id);
 }
 function dropCourseData(c){ (c.modules||[]).forEach(m => dropModuleData(c, m)); lfRemoveFiles(c.files||[]); S.hw = S.hw.filter(h => h.cid!==c.id); }
@@ -3451,22 +3579,22 @@ async function lfRunUpload(){
 /* ---------- домашние задания ---------- */
 const hwTasks = id => S.tasks.filter(t => t.hwId===id);
 function hwRow(h, withPlace){
-  const lm = learnMod(h.cid, h.mid), lec = lm && h.lecture && (lm.m.videos||[]).find(v => v.id===h.lecture), plan = hwTasks(h.id);
+  const lm = learnBox(h.cid, h.mid, h.lid) || learnBox(h.cid, h.mid), lec = lm && h.lecture && (lm.box.videos||[]).find(v => v.id===h.lecture), plan = hwTasks(h.id);
   const links = (h.links||[]).filter(safeUrl);
   return `<div class="hw ${h.done?'done':''}" id="hw-${h.id}"><div class="hw-r">
       <button class="chk ${h.done?'on':''}" data-a="hwToggle" data-id="${h.id}" title="Отметить выполненным"></button>
       <div class="hw-b" data-a="${withPlace ? 'hwOpen' : 'hwEdit'}" data-id="${h.id}"><b>${esc(h.title)}</b>
-        <div class="mini">${[withPlace && lm ? `${esc(lm.c.title)} · ${esc(lm.m.title)}` : '', lec ? '▶ '+esc(lec.title || 'Видео') : '', plan.length ? '📅 в плане на '+plan.map(t => fmtD(t.date, {day:'numeric', month:'short'})).join(', ') : '', (h.files||[]).length ? '📎 '+h.files.length : ''].filter(Boolean).join(' · ')}</div>
+        <div class="mini">${[withPlace && lm ? `${esc(lm.c.title)} · ${esc(lm.m.title)}${lm.l ? ' · '+esc(lm.l.title) : ''}` : '', lec ? '▶ '+esc(lec.title || 'Видео') : '', plan.length ? '📅 в плане на '+plan.map(t => fmtD(t.date, {day:'numeric', month:'short'})).join(', ') : '', (h.files||[]).length ? '📎 '+h.files.length : ''].filter(Boolean).join(' · ')}</div>
         ${!withPlace && (h.desc||'').trim() ? `<p class="hw-d">${esc(h.desc)}</p>` : ''}</div>
       <button class="ic more" data-a="hwMenu" data-id="${h.id}" title="Ещё" aria-haspopup="menu">⋯</button></div>
     ${!withPlace && links.length ? `<div class="hw-links">${links.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener" data-a="ext">🔗 ${esc(linkHost(u))}</a>`).join('')}</div>` : ''}
     ${!withPlace && (h.files||[]).length ? filesHtml('h:'+h.id, h.files) : ''}
   </div>`;
 }
-function openHwForm(id, cid, mid){
-  const h = id ? byId(S.hw, id) : {id:uid(), cid, mid, title:'', desc:'', lecture:'', done:false, links:[], files:[], created:Date.now()};
-  if(!h) return; const lm = learnMod(h.cid, h.mid); if(!lm) return;
-  const vids = lm.m.videos || [];
+function openHwForm(id, cid, mid, lid){
+  const h = id ? byId(S.hw, id) : Object.assign({id:uid(), cid, mid, title:'', desc:'', lecture:'', done:false, links:[], files:[], created:Date.now()}, lid ? {lid} : {});
+  if(!h) return; const lm = learnBox(h.cid, h.mid, h.lid) || learnBox(h.cid, h.mid); if(!lm) return;
+  const vids = lm.box.videos || [];
   openForm({title: id ? 'Домашнее задание' : 'Новое задание', wide:true, values:Object.assign({}, h, {linksText:(h.links||[]).join('\n')}), fields:[
     {k:'title', label:'Название', req:true},
     {k:'desc', label:'Описание (необязательно)', type:'textarea', rows:3},
@@ -3502,13 +3630,13 @@ function openHwPlan(id){
   }});
 }
 function myHomework(){
-  const all = S.hw.filter(h => learnMod(h.cid, h.mid)), open = all.filter(h => !h.done), done = all.filter(h => h.done);
+  const all = S.hw.filter(h => h.lid ? learnLes(h.cid, h.mid, h.lid) : learnMod(h.cid, h.mid)), open = all.filter(h => !h.done), done = all.filter(h => h.done);
   const list = UI.hwf==='done' ? done : UI.hwf==='all' ? all : open;
-  const groups = []; list.forEach(h => { const k = h.cid+'|'+h.mid; let g = groups.find(x => x.k===k); if(!g) groups.push(g = {k, h0:h, items:[]}); g.items.push(h); });
+  const groups = []; list.forEach(h => { const k = h.cid+'|'+h.mid+'|'+(h.lid||''); let g = groups.find(x => x.k===k); if(!g) groups.push(g = {k, h0:h, items:[]}); g.items.push(h); });
   return `<div class="tbar"><div class="chips">${[['open',`Не выполнены (${open.length})`],['done',`Выполнены (${done.length})`],['all','Все']].map(([v,l]) => `<button class="chip ${UI.hwf===v?'on':''}" data-a="hwFilter" data-v="${v}">${l}</button>`).join('')}</div></div>
-    ${groups.length ? groups.map(g => { const lm = learnMod(g.h0.cid, g.h0.mid);
-      return `<div class="card" style="margin-bottom:14px"><div class="ch"><div><div class="mini">${esc(lm.c.title)}</div><h2 style="font-size:19px">${esc(lm.m.title)}</h2></div>
-        <button class="btn sm ghost" data-a="modView" data-cid="${lm.c.id}" data-mid="${lm.m.id}">Открыть модуль</button></div>
+    ${groups.length ? groups.map(g => { const lm = learnBox(g.h0.cid, g.h0.mid, g.h0.lid);
+      return `<div class="card" style="margin-bottom:14px"><div class="ch"><div><div class="mini">${esc(lm.c.title)}${lm.l ? ' · '+esc(lm.m.title) : ''}</div><h2 style="font-size:19px">${esc(lm.l ? lm.l.title : lm.m.title)}</h2></div>
+        ${lm.l ? `<button class="btn sm ghost" data-a="lesView" data-cid="${lm.c.id}" data-mid="${lm.m.id}" data-lid="${lm.l.id}">Открыть урок</button>` : `<button class="btn sm ghost" data-a="modView" data-cid="${lm.c.id}" data-mid="${lm.m.id}">Открыть модуль</button>`}</div>
         <div class="hwl">${g.items.map(h => hwRow(h, true)).join('')}</div></div>`; }).join('')
       : `<div class="card"><p class="empty">${UI.hwf==='done' ? 'Выполненных заданий пока нет' : all.length ? 'Все задания выполнены ✨' : 'Заданий пока нет — их можно добавить в модуле курса'}</p></div>`}`;
 }
