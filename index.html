@@ -177,6 +177,13 @@ body.dragging-task,body.dragging-task *{cursor:grabbing!important;-webkit-user-s
 .cnt{background:#fff;border-radius:99px;padding:1px 10px;font-weight:800;font-size:13px}
 .icard{background:#fff;border-radius:18px;padding:13px;box-shadow:0 4px 14px rgba(31,58,18,.06);margin-bottom:10px;cursor:pointer;transition:.15s}
 .icard:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(31,58,18,.1)}
+.kanban .icard{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.icard.ksrc{display:none}
+.kph{border:2px dashed var(--lilac);background:rgba(201,143,211,.12);border-radius:18px;margin-bottom:10px;transform-origin:top}
+.kcol{transition:background .15s, box-shadow .15s}
+.kcol.kdrop{background:rgba(255,255,255,.82);box-shadow:inset 0 0 0 2px rgba(201,143,211,.45)}
+.icard.kghost{position:fixed;z-index:200;margin:0;pointer-events:none;transition:none;box-shadow:0 18px 40px rgba(31,58,18,.22);cursor:grabbing;opacity:.97}
+body.kdragging,body.kdragging *{cursor:grabbing!important;-webkit-user-select:none;user-select:none}
 .it{display:block;font-size:15.5px;font-weight:800;letter-spacing:-.015em;margin:8px 0 4px;line-height:1.25;color:var(--text)}
 .clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:0 0 8px}
 .mini{font-size:12px;color:var(--muted);font-weight:700}
@@ -1162,7 +1169,7 @@ function blogIdeas(){
   return (S.ideas.length ? '' : `<div class="card mb"><p class="empty">Пока нет идей</p><button class="btn sm" data-a="ideaNew" style="margin-top:8px">+ Добавить идею</button></div>`)
   + `<div class="chips mb">${[['all','Все площадки'],['Instagram','Instagram'],['TikTok','TikTok']].map(([v,l]) => `<button class="chip ${pf===v?'on':''}" data-a="bPlat" data-v="${v}">${l}</button>`).join('')}</div>
   <div class="kanban">${STATUSES.map((st,si) => { const its = list.filter(i => i.status===st);
-    return `<div class="kcol"><div class="kh"><b>${cap(st)}</b><span class="cnt">${its.length}</span></div>
+    return `<div class="kcol" data-st="${st}"><div class="kh"><b>${cap(st)}</b><span class="cnt">${its.length}</span></div>
       ${its.map(i => ideaCard(i,si)).join('')}
       <button class="kadd" data-a="ideaNew" data-status="${st}">+ добавить</button></div>`; }).join('')}</div>`;
 }
@@ -2262,6 +2269,126 @@ document.addEventListener('keydown', e => {
   const ids = grp.map(r => r.dataset.tid); [ids[i], ids[j]] = [ids[j], ids[i]];
   if(applyTaskOrder(ids)){ save(); const h = document.querySelector(`.task[data-tid="${CSS.escape(row.dataset.tid)}"] .drag`); if(h) h.focus(); }
 });
+
+/* ---------- Банк идей: перетаскивание карточек между колонками и внутри колонки ----------
+   мышь — сразу при движении с зажатой кнопкой; палец — после удержания карточки (~0,35 с), иначе это обычный скролл.
+   Порядок карточек = их порядок в S.ideas (синхронизируется через order|ideas), колонка = статус идеи. Остальные поля не трогаем */
+let KD = null, KSUPPRESS = 0;
+function kStart(){
+  const d = KD, r = d.card.getBoundingClientRect();
+  d.on = true; d.pending = false; d.dx = d.x - r.left; d.dy = d.y - r.top;
+  d.ph = document.createElement('div'); d.ph.className = 'kph'; d.ph.style.height = r.height + 'px';
+  d.card.parentNode.insertBefore(d.ph, d.card);
+  d.ghost = d.card.cloneNode(true); d.ghost.classList.add('kghost'); d.ghost.removeAttribute('data-a');
+  Object.assign(d.ghost.style, {width:r.width+'px', left:r.left+'px', top:r.top+'px'});
+  document.body.appendChild(d.ghost);
+  d.card.classList.add('ksrc');
+  document.body.classList.add('kdragging');
+  if(d.touch && navigator.vibrate) try { navigator.vibrate(10); } catch(err) {}
+  d.timer = setInterval(kAuto, 16);
+  kMove();
+}
+function kMove(){
+  const d = KD; if(!d || !d.on) return;
+  d.ghost.style.transform = `translate(${Math.round(d.x - d.dx - parseFloat(d.ghost.style.left))}px, ${Math.round(d.y - d.dy - parseFloat(d.ghost.style.top))}px) rotate(1.5deg)`;
+  const hit = document.elementFromPoint(d.x, d.y), col = hit && hit.closest && hit.closest('.kanban .kcol');
+  document.querySelectorAll('.kcol.kdrop').forEach(c => { if(c!==col) c.classList.remove('kdrop'); });
+  if(!col) return;
+  col.classList.add('kdrop');
+  const cards = [...col.querySelectorAll('.icard')].filter(c => c!==d.card);
+  const before = cards.find(c => { const r = c.getBoundingClientRect(); return d.y < r.top + r.height/2; }) || col.querySelector('.kadd');
+  if(d.ph.nextSibling!==before || d.ph.parentNode!==col){
+    const old = d.ph.getBoundingClientRect();
+    col.insertBefore(d.ph, before);
+    /* место для карточки плавно «раскрывается» */
+    if(d.ph.animate && Math.abs(old.top - d.ph.getBoundingClientRect().top) > 2) d.ph.animate([{opacity:.2, transform:'scaleY(.6)'}, {opacity:1, transform:'none'}], {duration:140, easing:'ease-out'});
+  }
+}
+function kAuto(){
+  const d = KD; if(!d || !d.on) return;
+  const kb = document.querySelector('.kanban'); let moved = false;
+  if(kb){ const r = kb.getBoundingClientRect(), e = 48;
+    const v = d.x < r.left + e ? -Math.ceil((r.left + e - d.x)/3) : d.x > r.right - e ? Math.ceil((d.x - r.right + e)/3) : 0;
+    if(v){ const b = kb.scrollLeft; kb.scrollLeft += v; moved = moved || kb.scrollLeft!==b; } }
+  const nav = document.getElementById('nav'), nb = nav ? nav.getBoundingClientRect() : null, bottom = nb && nb.top > innerHeight/2 ? nb.top : innerHeight, e2 = 56;
+  const vy = d.y < e2 ? -Math.ceil((e2 - d.y)/4) : d.y > bottom - e2 ? Math.ceil((d.y - bottom + e2)/4) : 0;
+  if(vy){ const b = scrollY; window.scrollBy(0, vy); moved = moved || scrollY!==b; }
+  if(moved) kMove();
+}
+function kEnd(commit){
+  const d = KD; if(!d) return;
+  clearTimeout(d.hold); clearInterval(d.timer);
+  if(!d.on){ KD = null; return; }
+  KSUPPRESS = Date.now() + 400; /* отпускание после перетаскивания не открывает карточку */
+  document.body.classList.remove('kdragging');
+  document.querySelectorAll('.kcol.kdrop').forEach(c => c.classList.remove('kdrop'));
+  const col = d.ph.parentNode && d.ph.closest('.kcol'), st = col && col.dataset.st;
+  const finish = () => {
+    d.ghost.remove(); KD = null;
+    if(!commit || !st){ d.ph.remove(); d.card.classList.remove('ksrc'); render(); return; }
+    const next = (() => { for(let n = d.ph.nextElementSibling; n; n = n.nextElementSibling) if(n.classList.contains('icard') && n!==d.card) return n.dataset.id; return null; })();
+    const prev = (() => { for(let n = d.ph.previousElementSibling; n; n = n.previousElementSibling) if(n.classList.contains('icard') && n!==d.card) return n.dataset.id; return null; })();
+    d.ph.remove(); d.card.classList.remove('ksrc');
+    kApply(d.id, st, prev, next);
+  };
+  if(commit && st && d.ghost.animate){
+    const g = d.ghost.getBoundingClientRect(), t = d.ph.getBoundingClientRect();
+    const a = d.ghost.animate([{transform:d.ghost.style.transform}, {transform:`translate(${Math.round(t.left - parseFloat(d.ghost.style.left))}px, ${Math.round(t.top - parseFloat(d.ghost.style.top))}px)`}], {duration: Math.abs(g.top-t.top)+Math.abs(g.left-t.left) > 4 ? 160 : 1, easing:'ease-out', fill:'forwards'});
+    a.onfinish = finish;
+  } else finish();
+}
+/* меняем только status и место идеи в списке; id, тексты, сценарий, файлы и прочее остаются как были */
+function kApply(id, st, prevId, nextId){
+  const i = byId(S.ideas, id); if(!i) return render();
+  const was = i.status, from = S.ideas.indexOf(i);
+  S.ideas.splice(from, 1);
+  let at = nextId ? S.ideas.findIndex(x => x.id===nextId) : -1;
+  if(at < 0 && prevId){ const p = S.ideas.findIndex(x => x.id===prevId); if(p > -1) at = p + 1; }
+  if(at < 0){ let last = -1; S.ideas.forEach((x,k) => { if(x.status===st) last = k; }); at = last > -1 ? last + 1 : S.ideas.length; }
+  S.ideas.splice(at, 0, i);
+  const moved = at!==from, changed = was!==st;
+  if(changed) i.status = st;
+  if(!moved && !changed) return render();
+  const n = changed && st==='опубликовано' ? ensurePosts(i) : 0;
+  save();
+  if(changed) toast(n ? 'Опубликовано — ролик добавлен в «Результаты»' : 'Статус: '+st);
+}
+/* мышь */
+document.addEventListener('pointerdown', e => {
+  if(e.pointerType==='touch' || e.button!==0 || KD) return;
+  const card = e.target.closest && e.target.closest('.kanban .icard'); if(!card || e.target.closest('button, a, input, select, textarea')) return;
+  KD = {card, id:card.dataset.id, pid:e.pointerId, x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY, on:false, touch:false};
+});
+document.addEventListener('pointermove', e => {
+  const d = KD; if(!d || d.touch || e.pointerId!==d.pid) return;
+  d.x = e.clientX; d.y = e.clientY;
+  if(!d.on){ if(Math.hypot(d.x - d.sx, d.y - d.sy) < 6) return; kStart(); }
+  e.preventDefault(); kMove();
+});
+document.addEventListener('pointerup', e => { if(KD && !KD.touch && e.pointerId===KD.pid) kEnd(true); });
+document.addEventListener('pointercancel', e => { if(KD && !KD.touch && e.pointerId===KD.pid) kEnd(false); });
+document.addEventListener('keydown', e => { if(e.key==='Escape' && KD && KD.on){ e.stopPropagation(); kEnd(false); } }, true);
+/* палец: удержание, потом перетаскивание; без удержания — обычная прокрутка доски и страницы */
+document.addEventListener('touchstart', e => {
+  if(KD || e.touches.length!==1) return;
+  const card = e.target.closest && e.target.closest('.kanban .icard'); if(!card || e.target.closest('button, a, input, select, textarea')) return;
+  const t = e.touches[0];
+  KD = {card, id:card.dataset.id, x:t.clientX, y:t.clientY, sx:t.clientX, sy:t.clientY, on:false, touch:true};
+  KD.hold = setTimeout(() => { if(KD && !KD.on && KD.card.isConnected) kStart(); }, 350);
+}, {passive:true});
+document.addEventListener('touchmove', e => {
+  const d = KD; if(!d || !d.touch) return;
+  const t = e.touches[0]; if(!t) return;
+  d.x = t.clientX; d.y = t.clientY;
+  if(!d.on){ if(Math.hypot(d.x - d.sx, d.y - d.sy) > 10){ clearTimeout(d.hold); KD = null; } return; } /* это прокрутка */
+  e.preventDefault(); kMove();
+}, {passive:false});
+document.addEventListener('touchend', e => { const d = KD; if(!d || !d.touch) return; if(d.on){ e.preventDefault(); kEnd(true); } else { clearTimeout(d.hold); KD = null; } }, {passive:false});
+document.addEventListener('touchcancel', () => { if(KD && KD.touch) kEnd(false); });
+document.addEventListener('contextmenu', e => { if(e.target.closest && e.target.closest('.kanban .icard') && (KD || e.pointerType==='touch')) e.preventDefault(); });
+document.addEventListener('click', e => { if(Date.now() < KSUPPRESS){ e.preventDefault(); e.stopPropagation(); KSUPPRESS = 0; } }, true);
+/* блокируется только клик сразу после отпускания карточки — новое нажатие уже обычное */
+document.addEventListener('pointerdown', () => { if(!KD) KSUPPRESS = 0; }, true);
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if(!el) return;
@@ -4227,6 +4354,7 @@ window.addEventListener('hashchange', () => { const v = location.hash.slice(1); 
 
 function render(){
   if(DRAG && DRAG.on){ DRAG.pending = true; return; } /* во время перетаскивания не перерисовываем — после отпускания */
+  if(KD && KD.on){ KD.pending = true; return; }
   document.getElementById('app').innerHTML = VIEWS[view]();
   document.getElementById('nav').innerHTML = NAV.map(([k,l,s,i]) =>
     `<button class="${k===view?'on':''}" data-a="nav" data-v="${k}"><span class="ico">${i}</span><span class="nl">${l}</span><span class="ns">${s}</span></button>`).join('');
