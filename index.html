@@ -678,18 +678,9 @@ const dkey = (d=new Date()) => d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d
 const T = () => dkey();
 const parseD = k => { const [y,m,d] = k.split('-').map(Number); return new Date(y,m-1,d); };
 const addDays = (k,n) => { const d = parseD(k); d.setDate(d.getDate()+n); return dkey(d); };
-/* «Вчера / Сегодня / Завтра» в «Плане на сегодня»: даты по часовому поясу Хошимина */
-const PLAN_TZ = 'Asia/Ho_Chi_Minh';
-let TZF = null;
-function tzToday(){
-  try {
-    TZF = TZF || new Intl.DateTimeFormat('en-CA', {timeZone:PLAN_TZ, year:'numeric', month:'2-digit', day:'2-digit'});
-    const p = {}; TZF.formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
-    return `${p.year}-${p.month}-${p.day}`;
-  } catch(err) { return dkey(); } /* браузер не знает часовой пояс — дата устройства */
-}
-/* выбранный день главной: −1 вчера, 0 сегодня, +1 завтра (относительно — после полуночи «Сегодня» само станет новым днём) */
-const PD = () => addDays(tzToday(), UI.pday || 0);
+/* «Вчера / Сегодня / Завтра» в «Плане на сегодня»: от локальной даты устройства — T() (dkey берёт год, месяц и день
+   по местному времени, без UTC), выбранный день: −1 вчера, 0 сегодня, +1 завтра; после полуночи «Сегодня» само станет новым днём */
+const PD = () => addDays(T(), UI.pday || 0);
 const weekStart = k => { const d = parseD(k); d.setDate(d.getDate()-((d.getDay()+6)%7)); return dkey(d); };
 const uid = () => Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -4043,17 +4034,16 @@ function render(){
 }
 
 /* перерисовка главной раз в минуту (приветствие, смена дня) */
-let lastDay = T(), lastPlanDay = tzToday();
+let lastDay = T();
 /* PWA могла «спать»: при возвращении сразу перерисовываем, если наступил новый день */
 ['visibilitychange','pageshow','focus'].forEach(ev => (ev==='visibilitychange' ? document : window).addEventListener(ev, () => {
-  if(document.visibilityState==='hidden' || (T()===lastDay && tzToday()===lastPlanDay)) return;
-  lastDay = T(); lastPlanDay = tzToday();
+  if(document.visibilityState==='hidden' || T()===lastDay) return;
+  lastDay = T();
   const active = document.activeElement;
   if(view==='home' && !document.getElementById('modalRoot').innerHTML && !(active && /INPUT|TEXTAREA|SELECT/.test(active.tagName))) render();
 }));
 setInterval(() => {
   if(T()!==lastDay) lastDay = T();
-  lastPlanDay = tzToday();
   const active = document.activeElement;
   if(!document.getElementById('modalRoot').innerHTML && !(active && /INPUT|TEXTAREA|SELECT/.test(active.tagName)) && view==='home') render();
 }, 60000);
