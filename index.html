@@ -433,6 +433,41 @@ a.btn{text-decoration:none;display:inline-block}
 .stay.dep,.stay.arr{background:#eef1fb}
 @media(max-width:760px){.fl{padding:12px}.fl-p b{font-size:19px}.fl-r{gap:6px}}
 
+/* ---------- главная: календарь задач и отчёты дня ---------- */
+.cal-nav{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cal-nav .ic{width:30px;height:30px}
+.cal-t{font-weight:800;color:var(--green);min-width:0}
+.mcal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cd{border:0;background:#f4f6f1;border-radius:14px;padding:8px 2px 7px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;color:var(--green);font-weight:800;font-size:14px;position:relative;min-width:0;min-height:54px;transition:.15s;font-family:inherit}
+.cd:hover{background:#eaf0e2}
+.cd.out{opacity:.4}
+.cd.today{box-shadow:inset 0 0 0 2px var(--lilac)}
+.cd.sel{background:var(--green);color:#fff}
+.cd-dots{display:flex;gap:3px;height:6px;align-items:center}
+.cd-dots i{width:6px;height:6px;border-radius:50%;background:var(--lilac)}
+.cd-dots i.on{background:var(--lime)}
+.cd-dots b{font-size:9px;line-height:6px;color:var(--muted)}
+.cd.sel .cd-dots b{color:#dfe6d6}
+.cd.rep::after{content:'✓';position:absolute;top:2px;right:5px;font-size:10px;font-weight:800;color:#3c7a1c}
+.cd.sel.rep::after{color:var(--lime)}
+.cal-day{margin-top:14px;background:#f7f9f4;border-radius:22px;padding:14px 16px}
+.cal-day .task{border-bottom-color:#e9ede4}
+.cal-slot{flex:none;font-size:14px}
+.cal-add select{width:auto;flex:none;padding:8px 10px;border-radius:14px}
+.ci{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.ci span{flex:1;min-width:0;word-break:break-word}
+.ci.dis{opacity:.55}
+.rep-k{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:4px 0 6px}
+.rep-orig{margin-top:14px;background:#f7f9f4;border-radius:18px;padding:10px 14px}
+.rep-orig summary{cursor:pointer;font-weight:800;color:var(--green)}
+.rep-l{white-space:pre-wrap;word-break:break-word;margin:4px 0 0}
+@media(max-width:760px){
+  .mcal{gap:4px}
+  .cd{min-height:46px;border-radius:12px;font-size:13px;padding:7px 0 6px;gap:4px}
+  .cd-dots i{width:5px;height:5px}
+  .cal-day{padding:12px}
+}
+
 /* ---------- облако: вход и статус синхронизации ---------- */
 .sync{border:0;background:#fff;border-radius:999px;padding:7px 12px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;box-shadow:var(--shadow);display:flex;gap:6px;align-items:center}
 .sync[hidden]{display:none}
@@ -554,7 +589,8 @@ function emptyState(){
     ideas:[], refs:[], journal:[], weekly:{},
     courses:[], books:[], goals:[],
     posts:[], blogSeeded:0, postsMigrated:0,
-    trips:[], stops:[], docs:[]
+    trips:[], stops:[], docs:[],
+    reports:[]
   };
 }
 
@@ -637,7 +673,7 @@ function save(){ persist(); render(); }
 
 const UI = {
   btab:'ideas', bplat:'all', bweek:weekStart(T()), bmonth:T().slice(0,7),
-  jtab:'write', jf:'all', jq:'', jweek:weekStart(T()), jprompt:rand(PROMPTS.free),
+  jtab:'write', jf:'all', calSel:null, calRef:null, calMonth:false, jq:'', jweek:weekStart(T()), jprompt:rand(PROMPTS.free),
   hsel:null, hmonth:T().slice(0,7),
   rplat:'all', rper:'all', rsort:'date', cmp:[], post:null,
   trip:null, tf:'all', ttab:'route', dcat:'all'
@@ -760,6 +796,7 @@ function vHome(){
     <section class="card span-5">${startDayHtml(dy)}</section>
     <section class="card span-7">${timerHtml(fw,fwMin)}</section>
     <section class="card span-12">${planHtml(tt,overdue)}</section>
+    <section class="card span-12">${calHtml()}</section>
     <section class="card span-6">${habitsHtml(t)}</section>
     <section class="card span-6 ${h>=18?'glow':''}">${reviewHtml(dy,tt,h)}</section>
   </div>`;
@@ -923,7 +960,8 @@ function reviewHtml(dy, tt, h){
   <div class="lbl">Что перенести</div>
   <textarea data-c="rMove" rows="2">${esc(dy.rMove)}</textarea>
   ${undone.length ? `<div class="note">Незавершённых задач: ${undone.length}<button class="btn sm" data-a="moveUndone">Перенести на завтра</button></div>`
-    : `<p class="muted sm">${tt.length ? 'Все задачи на сегодня закрыты ✨' : 'На сегодня задач нет.'}</p>`}`;
+    : `<p class="muted sm">${tt.length ? 'Все задачи на сегодня закрыты ✨' : 'На сегодня задач нет.'}</p>`}
+  ${finishHtml()}`;
 }
 
 /* =========================================================
@@ -1352,8 +1390,8 @@ function vJournal(){
   return hero('Journaling','Дневник','Мысли, эмоции и выводы — в одном месте', [
       [S.journal.length,'записей всего'], [jStreak()+' 🔥','дней подряд'], [wkE.length,'записей за неделю'],
       [avg ? MOODS[Math.round(avg)-1]+' '+avg.toFixed(1).replace('.',',') : '—','настроение недели']
-    ]) + `<div class="tabs">${tabs([['write','Записи'],['week','Обзор недели']], UI.jtab, 'jTab')}</div>`
-    + (UI.jtab==='write' ? journalWrite() : journalWeek());
+    ]) + `<div class="tabs">${tabs([['write','Записи'],['week','Обзор недели'],['days','История дней']], UI.jtab, 'jTab')}</div>`
+    + (UI.jtab==='write' ? journalWrite() : UI.jtab==='days' ? journalDays() : journalWeek());
 }
 
 function entryCard(e){
@@ -1709,6 +1747,21 @@ const ACT = {
 
   /* journaling */
   jTab: d => { UI.jtab = d.v; render(); },
+  calPick: d => { UI.calSel = d.v===T() ? null : d.v; render(); },
+  calPrev: () => calShift(-1),
+  calNext: () => calShift(1),
+  calToday: () => { UI.calSel = null; UI.calRef = null; render(); },
+  calMode: () => { UI.calMonth = !UI.calMonth; UI.calRef = calSelDate(); render(); },
+  calTaskAdd: () => { const inp = document.querySelector('[data-caltask]'), v = inp ? inp.value.trim() : ''; if(!v) return;
+    const slot = (document.querySelector('[data-calslot]')||{}).value || 'morning';
+    S.tasks.push({id:uid(), date:calSelDate(), slot, text:v, done:false}); save();
+    const ni = document.querySelector('[data-caltask]'); if(ni) ni.focus(); },
+  dayFinish: () => finishDay(),
+  repOpen: d => openReport(d.id),
+  repEdit: d => editReport(d.id),
+  repCarry: d => openCarry(d.id),
+  carryTog: (d, el) => { if(!el.classList.contains('dis')) el.classList.toggle('on'); },
+  carryGo: d => carryCreate(d.id),
   jNew: d => openEntry(null, d.type),
   jOpen: d => openEntry(d.id),
   jPrompt: () => { let p; do { p = rand([...PROMPTS.morning, ...PROMPTS.evening, ...PROMPTS.free]); } while(p===UI.jprompt); UI.jprompt = p; render(); },
@@ -2467,11 +2520,174 @@ function showDoc(id){
 }
 
 /* =========================================================
+   ГЛАВНАЯ · календарь задач и отчёты дня
+   Календарь показывает те же задачи S.tasks, что и «План на сегодня» (без копий).
+   Отчёт дня — S.reports, один на дату (id = rep-ГГГГ-ММ-ДД): orig — неизменяемый снимок,
+   остальные поля — копия для правки в «Истории дней».
+   ========================================================= */
+const SLOT_ICO = {morning:'☀️', day:'🌤', evening:'🌙'};
+const calSelDate = () => UI.calSel || T();
+const reportOf = k => S.reports.find(r => r.date===k);
+function calShift(dir){
+  const ref = UI.calRef || calSelDate();
+  if(UI.calMonth){ const d = parseD(ref.slice(0,7)+'-01'); d.setMonth(d.getMonth()+dir); UI.calRef = dkey(d); }
+  else UI.calRef = addDays(weekStart(ref), 7*dir);
+  render();
+}
+function calRange(){
+  const ref = UI.calRef || calSelDate();
+  if(!UI.calMonth){ const ws = weekStart(ref); return {days:[0,1,2,3,4,5,6].map(i => addDays(ws,i)), month:null}; }
+  const m1 = ref.slice(0,7)+'-01', nd = parseD(m1); nd.setMonth(nd.getMonth()+1);
+  const last = addDays(dkey(nd), -1), out = [];
+  for(let k = weekStart(m1); k<=addDays(weekStart(last),6); k = addDays(k,1)) out.push(k);
+  return {days:out, month:m1.slice(0,7)};
+}
+function calHtml(){
+  const t = T(), sel = calSelDate(), {days, month} = calRange(), byDate = {};
+  S.tasks.forEach(x => { (byDate[x.date] = byDate[x.date] || []).push(x); });
+  const title = month ? cap(parseD(month+'-01').toLocaleDateString('ru-RU', {month:'long', year:'numeric'}))
+    : days[0].slice(5,7)===days[6].slice(5,7) ? +days[0].slice(8)+' — '+fmtD(days[6], {day:'numeric', month:'long'})
+    : fmtD(days[0], {day:'numeric', month:'short'})+' — '+fmtD(days[6], {day:'numeric', month:'short'});
+  const cell = k => { const l = byDate[k] || [], dn = l.filter(x => x.done).length, op = l.length-dn;
+    const dots = '<i class="on"></i>'.repeat(Math.min(dn,3)) + '<i></i>'.repeat(Math.min(op, Math.max(0, 3-Math.min(dn,3)))) + (l.length>3 ? '<b>+</b>' : '');
+    const cls = [k===t ? 'today' : '', k===sel ? 'sel' : '', month && k.slice(0,7)!==month ? 'out' : '', reportOf(k) ? 'rep' : ''].join(' ');
+    const lab = `${fmtD(k, {day:'numeric', month:'long'})}: задач ${l.length}${dn ? ', выполнено '+dn : ''}${reportOf(k) ? ', день завершён' : ''}`;
+    return `<button class="cd ${cls}" data-a="calPick" data-v="${k}" title="${lab}" aria-label="${lab}"><span>${+k.slice(8)}</span><span class="cd-dots">${dots}</span></button>`; };
+  return `<div class="ch"><h2>Мой календарь</h2>
+      <div class="cal-nav"><button class="ic" data-a="calPrev" title="${month ? 'Предыдущий месяц' : 'Предыдущая неделя'}">‹</button><span class="cal-t">${title}</span><button class="ic" data-a="calNext" title="${month ? 'Следующий месяц' : 'Следующая неделя'}">›</button>
+      ${sel!==t || UI.calRef ? '<button class="btn sm ghost" data-a="calToday">Сегодня</button>' : ''}<button class="btn sm ghost" data-a="calMode">${month ? 'Неделя' : 'Весь месяц'}</button></div></div>
+    <div class="mcal">${WD.map(w => `<div class="calh">${w}</div>`).join('')}${days.map(cell).join('')}</div>
+    ${calDayPanel(sel)}`;
+}
+function calDayPanel(k){
+  const ord = {morning:0, day:1, evening:2}, t = T();
+  const items = S.tasks.filter(x => x.date===k).map((x,i) => [x,i]).sort((a,b) => (ord[a[0].slot]??1)-(ord[b[0].slot]??1) || a[1]-b[1]).map(v => v[0]);
+  const r = reportOf(k), dn = items.filter(x => x.done).length;
+  return `<div class="cal-day">
+    <div class="row between gap"><div><b>${cap(fmtD(k, {weekday:'long', day:'numeric', month:'long'}))}</b>${k===t ? ' <span class="badge">сегодня</span>' : ''}
+      <div class="mini">${items.length ? `задач: ${items.length} · выполнено ${dn}` : 'задач нет'}${k===t ? ' · это тот же список, что в «Плане на сегодня»' : ''}</div></div>
+      ${r ? `<button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">📝 Отчёт дня</button>` : ''}</div>
+    ${items.map(x => `<div class="task ${x.done?'done':''}">
+      <button class="chk ${x.done?'on':''}" data-a="taskToggle" data-id="${x.id}" title="Отметить"></button>
+      <span class="cal-slot" title="${(SLOTS.find(s => s[0]===x.slot)||['',''])[1]}">${SLOT_ICO[x.slot]||'•'}</span>
+      <span class="tt" data-a="taskEdit" data-id="${x.id}" title="Изменить">${esc(x.text)}</span>
+      <button class="ic" title="Удалить" data-a="taskDel" data-id="${x.id}">×</button></div>`).join('')}
+    <div class="addrow cal-add"><select data-calslot aria-label="Когда">${SLOTS.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+      <input data-caltask data-enter="calTaskAdd" placeholder="Задача на ${fmtD(k, {day:'numeric', month:'short'})}…"><button class="ic plus" data-a="calTaskAdd" title="Добавить">+</button></div>
+  </div>`;
+}
+
+/* ---------- отчёт дня ---------- */
+function finishHtml(){
+  const r = reportOf(T());
+  return `<div class="row gap" style="margin-top:12px">${r
+    ? `<span class="badge tt">✓ День завершён</span><button class="btn sm ghost" data-a="repOpen" data-id="${r.id}">Открыть отчёт</button>`
+    : '<button class="btn" data-a="dayFinish">Завершить день</button><span class="muted sm">сохранится снимок отчёта в «Истории дней»</span>'}</div>`;
+}
+/* пункты «Что перенести»: по строкам и через «;», без маркеров списка */
+function moveItems(text){
+  return String(text||'').split(/\n|;/).map(v => v.replace(/^\s*(?:[-–—*•·]|\d+[.)])\s*/, '').trim()).filter(Boolean);
+}
+const normText = v => String(v||'').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[.!…]+$/, '');
+function finishDay(){
+  const k = T(); if(reportOf(k)){ openReport(reportOf(k).id); return; }
+  if(!confirm('Завершить день? Сохранится снимок: энергия, настроение, главное дело, выполненные задачи и итоги. Его исходный текст потом не меняется.')) return;
+  const dy = day(k), tt = S.tasks.filter(x => x.date===k);
+  const snap = {energy:dy.energy||0, mood:dy.mood||0, main:dy.main||'', mainDone:!!dy.mainDone,
+    done:tt.filter(x => x.done).map(x => x.text), open:tt.filter(x => !x.done).map(x => x.text), rDone:dy.rDone||'', rMove:dy.rMove||''};
+  const r = Object.assign({id:'rep-'+k, date:k, created:Date.now(), edited:0, carried:[]}, JSON.parse(JSON.stringify(snap)), {orig:JSON.parse(JSON.stringify(snap))});
+  S.reports.push(r); save(); toast('День завершён ✨');
+  if(moveItems(r.rMove).length) openCarry(r.id, true); else openReport(r.id);
+}
+function repBody(v, withOpen){
+  const L = (t, x) => (x||'').trim() ? `<div class="lbl">${t}</div><p class="rep-l">${esc(x)}</p>` : '';
+  return `<div class="rep-k">
+      <div class="hs"><b>${v.energy || '—'}</b><span>энергия</span></div>
+      <div class="hs"><b>${v.mood ? MOODS[v.mood-1] : '—'}</b><span>настроение</span></div>
+      <div class="hs"><b>${(v.done||[]).length}</b><span>задач выполнено</span></div></div>
+    ${(v.main||'').trim() ? `<div class="lbl">Главное дело</div><p class="rep-l">${v.mainDone ? '✅' : '⬜'} ${esc(v.main)}</p>` : ''}
+    ${(v.done||[]).length ? `<div class="lbl">Выполненные задачи</div>${v.done.map(x => `<p class="rep-l">✓ ${esc(x)}</p>`).join('')}` : ''}
+    ${withOpen && (v.open||[]).length ? `<div class="lbl">Не выполнено</div>${v.open.map(x => `<p class="rep-l muted">· ${esc(x)}</p>`).join('')}` : ''}
+    ${L('Что получилось', v.rDone)}${L('Что перенести', v.rMove)}`;
+}
+const repChanged = r => ['energy','mood','main','mainDone','rDone','rMove'].some(k => r[k]!==r.orig[k]) || JSON.stringify(r.done||[])!==JSON.stringify(r.orig.done||[]);
+function openReport(id){
+  const r = byId(S.reports, id); if(!r) return;
+  const left = carryItems(r).filter(it => !it.why).length;
+  openModal(`<h3>📝 ${cap(fmtD(r.date, {weekday:'long', day:'numeric', month:'long', year:'numeric'}))}</h3>
+    <div class="mini" style="margin:-8px 0 12px">Завершён ${new Date(r.created).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}${r.edited ? ' · изменён '+new Date(r.edited).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}) : ''}</div>
+    ${repBody(r, true)}
+    ${(r.carried||[]).length ? `<div class="lbl">Уже перенесено в задачи на ${fmtD(addDays(r.date,1), {day:'numeric', month:'long'})}</div>${r.carried.map(c => `<p class="rep-l">→ ${esc(c.text)}</p>`).join('')}` : ''}
+    ${r.edited && repChanged(r) ? `<details class="rep-orig"><summary>Исходный снимок (не меняется)</summary>${repBody(r.orig, true)}</details>` : ''}
+    <div class="mfoot">${left ? `<button class="btn ghost" data-a="repCarry" data-id="${r.id}">→ В задачи на ${fmtD(addDays(r.date,1), {day:'numeric', month:'short'})}</button>` : ''}
+      <button class="btn ghost" data-a="repEdit" data-id="${r.id}">✎ Изменить отчёт</button><button class="btn" data-a="mclose">Закрыть</button></div>`, true);
+}
+function editReport(id){
+  const r = byId(S.reports, id); if(!r) return;
+  openForm({title:'Отчёт за '+fmtD(r.date, {day:'numeric', month:'long'}), wide:true,
+    values:Object.assign({}, r, {doneText:(r.done||[]).join('\n')}), fields:[
+    {k:'energy', label:'Энергия', type:'scale', half:1}, {k:'mood', label:'Настроение', type:'scale', labels:MOODS, half:1},
+    {k:'main', label:'Главное дело'}, {k:'mainDone', label:'Главное дело сделано', type:'check'},
+    {k:'doneText', label:'Выполненные задачи (по одной в строке)', type:'textarea', rows:4},
+    {k:'rDone', label:'Что получилось', type:'textarea', rows:3}, {k:'rMove', label:'Что перенести', type:'textarea', rows:3},
+    {type:'hint', label:'Правится только эта копия отчёта — исходный снимок дня сохраняется без изменений.'}
+  ],
+  onSave: v => { const done = String(v.doneText||'').split('\n').map(x => x.trim()).filter(Boolean); delete v.doneText;
+    Object.assign(r, v, {done, edited:Date.now()}); },
+  after: () => openReport(r.id)});
+}
+function openCarry(id, justFinished){
+  const r = byId(S.reports, id); if(!r) return;
+  const target = addDays(r.date,1), items = carryItems(r);
+  openModal(`<h3>${justFinished ? '✓ День завершён' : 'Перенести в задачи'}</h3>
+    ${justFinished ? '<p class="muted sm" style="margin-top:-6px">Снимок сохранён в Journaling → «История дней».</p>' : ''}
+    <div class="lbl">Что перенести → задачи на ${fmtD(target, {weekday:'long', day:'numeric', month:'long'})}</div>
+    <div id="carryList">${items.map((it,i) => `<div class="ci ${it.why?'dis':''}"><button class="chk ${it.why?'dis':'on'}" data-a="carryTog" data-i="${i}" ${it.why?'disabled':''}></button><span>${esc(it.text)}</span>${it.why ? `<span class="mini" style="flex:none">${it.why}</span>` : ''}</div>`).join('')}</div>
+    <div class="f half" style="margin-top:12px;max-width:260px"><span>Когда</span><select id="carrySlot">${SLOTS.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+    <p class="muted sm">Задачи создадутся только после подтверждения. Повторно один и тот же пункт не добавится.</p>
+    <div class="mfoot"><button class="btn ghost" data-a="mclose">Не переносить</button><button class="btn" data-a="carryGo" data-id="${r.id}" ${items.every(it => it.why) ? 'disabled' : ''}>Создать задачи</button></div>`);
+  CARRY = items;
+}
+let CARRY = null;
+/* пункты «Что перенести» с причиной, почему пункт нельзя перенести ещё раз */
+function carryItems(r){
+  const target = addDays(r.date,1), existing = S.tasks.filter(x => x.date===target).map(x => normText(x.text)), seen = [];
+  return moveItems(r.rMove).map(text => { const n = normText(text);
+    const why = (r.carried||[]).some(c => normText(c.text)===n) ? 'уже перенесено' : existing.includes(n) ? 'такая задача уже есть' : seen.includes(n) ? 'повтор' : '';
+    seen.push(n); return {text, why}; });
+}
+function carryCreate(id){
+  const r = byId(S.reports, id), items = CARRY; if(!r || !items) return;
+  const target = addDays(r.date,1), slot = $id('carrySlot').value;
+  const picked = [...document.querySelectorAll('#carryList .chk.on')].map(b => items[+b.dataset.i]).filter(it => it && !it.why);
+  if(!picked.length){ toast('Ничего не выбрано'); return; }
+  let n = 0;
+  r.carried = r.carried || [];
+  picked.forEach(it => { const nt = normText(it.text);
+    if(S.tasks.some(x => x.date===target && normText(x.text)===nt) || r.carried.some(c => normText(c.text)===nt)) return; // без дублей
+    const task = {id:uid(), date:target, slot, text:it.text, done:false};
+    S.tasks.push(task); r.carried.push({text:it.text, taskId:task.id, at:Date.now()}); n++; });
+  CARRY = null; closeModal(); save();
+  toast(n ? `Создано задач на ${fmtD(target, {day:'numeric', month:'short'})}: ${n}` : 'Такие задачи уже есть');
+}
+function journalDays(){
+  const list = S.reports.slice().sort((a,b) => b.date.localeCompare(a.date));
+  if(!list.length) return '<div class="card"><p class="empty">Пока нет завершённых дней</p><p class="muted sm" style="margin:6px 0 0">Вечером нажми «Завершить день» в блоке «Итог дня» на главной — здесь появится снимок отчёта.</p></div>';
+  return `<div class="card">${list.map(r => `<div class="entry" data-a="repOpen" data-id="${r.id}">
+      <div class="row between gap"><b>${cap(fmtD(r.date, {weekday:'short', day:'numeric', month:'long', year:'numeric'}))}</b>
+        <span class="row gap">${r.energy ? `<span class="badge">⚡ ${r.energy}</span>` : ''}${r.mood ? `<span class="mood">${MOODS[r.mood-1]}</span>` : ''}${r.edited && repChanged(r) ? '<span class="badge">изменён</span>' : ''}</span></div>
+      ${(r.main||'').trim() ? `<div class="sm" style="margin-top:4px">${r.mainDone ? '✅' : '🎯'} ${esc(r.main)}</div>` : ''}
+      <div class="mini" style="margin-top:4px">выполнено задач: ${(r.done||[]).length}${(r.carried||[]).length ? ` · перенесено: ${r.carried.length}` : ''}</div>
+      ${(r.rDone||'').trim() ? `<p class="etext" style="-webkit-line-clamp:3">${esc(r.rDone)}</p>` : ''}
+    </div>`).join('')}</div>`;
+}
+
+/* =========================================================
    ОБЛАКО · вход, синхронизация, изображения, перенос
    Каждая запись кабинета хранится отдельной строкой таблицы cabinet_items:
    kind — раздел (tasks, habits, journal…), item_id — id записи, data — сама запись.
    ========================================================= */
-const ARR_KINDS = ['habits','tasks','focus','ideas','refs','journal','courses','books','goals','posts','trips','stops','docs'];
+const ARR_KINDS = ['habits','tasks','focus','ideas','refs','journal','courses','books','goals','posts','trips','stops','docs','reports'];
 const MAP_KINDS = [['habitLog','habit_log'],['days','days'],['weekly','weekly']];
 const SET_KEYS = ['v','clean','habitsSeeded','name','timer','timerCfg','blogSeeded','postsMigrated'];
 const DEL = '-';
