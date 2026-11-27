@@ -530,6 +530,9 @@ a.btn{text-decoration:none;display:inline-block}
 @media(max-width:760px){.cal-bar{padding:9px 12px}.cal-leg{gap:4px 9px;font-size:11px}}
 .cal-day .tev,.slot .tev{margin:6px 0}
 .stay.mini{padding:5px 12px;font-size:13px;background:transparent}
+.stay.tev > .chk{flex:none;margin:-1px -2px 0 0}
+.stay.tev.done{opacity:.62}
+.stay.tev.done .stay-h{text-decoration:line-through;text-decoration-color:currentColor}
 .stop.flash{background:#f6eef8;border-radius:14px;box-shadow:0 0 0 6px #f6eef8}
 .cal-day .task{border-bottom-color:#e9ede4}
 .cal-slot{flex:none;font-size:14px}
@@ -1027,7 +1030,7 @@ function planHtml(tt, overdue){
     /* те же события, что в «Моём календаре» на сегодня: только показ, без копий; порядок — как в календаре */
     /* ручной порядок = место задачи в S.tasks (синхронизируется через order|tasks); невыполненные всегда выше выполненных */
     const rows = items.map(x => ({key:TASK_KEY[k], rank:x.done ? 21 : 20, i:S.tasks.indexOf(x), html:taskRow(x)}))
-      .concat(evs.map((e,i) => ({key:e.time || EV_KEY[e.type] || '12:00', rank:EV_RANK[e.type] ?? 5, i, html:evRow(e)})))
+      .concat(evs.map((e,i) => ({key:e.time || EV_KEY[e.type] || '12:00', rank:EV_RANK[e.type] ?? 5, i, html:evRow(e, p)})))
       .sort((a,b) => a.key.localeCompare(b.key) || a.rank-b.rank || a.i-b.i);
     return `<div class="slot"><div class="slot-h">${l}<span class="muted sm">${items.filter(x=>x.done).length}/${items.length}</span></div>
       ${rows.length ? rows.map(v => v.html).join('') : '<p class="empty sm">Пока нет задач</p>'}
@@ -1944,6 +1947,8 @@ const ACT = {
   mainDone: d => { const x = day(d.d || PD()); x.mainDone = !x.mainDone; save(); },
   taskToggle: d => { const t = byId(S.tasks,d.id); if(t){ t.done = !t.done; hwFromTask(t); save(); } },
   taskMove: d => { const t = byId(S.tasks,d.id); if(t){ t.date = addDays(t.date,1); t.done = false; save(); toast(`Перенесено на ${fmtD(t.date, {day:'numeric', month:'long'})}`); } },
+  evToggle: d => { if(!d.d || !d.k) return; const x = day(d.d), m = x.evDone = Object.assign({}, x.evDone);
+    if(m[d.k]) delete m[d.k]; else m[d.k] = true; save(); },
   planDay: d => { UI.pday = Math.max(-1, Math.min(1, +d.v || 0)); render(); },
   taskDel: d => { del(S.tasks,d.id); save(); },
   taskEdit: d => { const t = byId(S.tasks,d.id); if(!t) return;
@@ -3140,19 +3145,20 @@ function travelEvents(){
   const out = {}, add = (d, e) => { if(d) (out[d] = out[d] || []).push(e); };
   S.trips.forEach(t => {
     const tn = t.title || 'Поездка';
-    if(t.start) add(t.start, {type:'tstart', time:'', icon:'🧳', label:'Начало поездки', title:tn, act:'tvTrip', id:t.id});
-    if(t.end && t.end!==t.start) add(t.end, {type:'tend', time:'', icon:'🏁', label:'Конец поездки', title:tn, act:'tvTrip', id:t.id});
+    if(t.start) add(t.start, {type:'tstart', time:'', icon:'🧳', label:'Начало поездки', title:tn, act:'tvTrip', id:t.id, k:'trip:'+t.id+':start'});
+    if(t.end && t.end!==t.start) add(t.end, {type:'tend', time:'', icon:'🏁', label:'Конец поездки', title:tn, act:'tvTrip', id:t.id, k:'trip:'+t.id+':end'});
     Object.entries(flightEvents(t)).forEach(([d, l]) => l.forEach(e => { const f = e.seg, dep = e.type==='dep', nm = segName(f);
       add(d, {type:e.type, time:e.time, icon: dep ? '🛫' : '🛬', label: dep ? 'Вылет' : 'Прилёт', act:'flightsOpen', id:e.doc.id,
+        k:'fl:'+e.doc.id+':'+(f.id || (e.doc.flights||[]).indexOf(f))+':'+e.type,
         title:(dep ? `${f.from||'?'}${f.fromCity ? ' '+f.fromCity : ''} → ${f.to||'?'}` : `${f.to||'?'}${f.toCity ? ' '+f.toCity : ''}`)+(nm ? ' · '+nm : '')}); }));
     Object.entries(stayEvents(t)).forEach(([d, l]) => {
       l.forEach(e => add(d, {type:e.type, time:e.time||'', icon:{in:'🔑', out:'🧳', stay:'🏨'}[e.type], label:{in:'Заселение', out:'Выезд', stay:'Проживание'}[e.type],
-        title:e.doc.title || 'Жильё', act:'stayOpen', id:e.doc.id, compact:e.type==='stay'}));
+        title:e.doc.title || 'Жильё', act:'stayOpen', id:e.doc.id, compact:e.type==='stay', k:'stay:'+e.doc.id+':'+e.type}));
       if(l.some(e => e.type==='out') && l.some(e => e.type==='in')) add(d, {type:'swap', time:'', icon:'🔄', label:'Смена жилья', title:'', act:'tvTrip', id:t.id, compact:true});
     });
-    S.stops.filter(x => x.tripId===t.id && x.day).forEach(x => add(x.day, {type:'stop', time:x.time||'', icon:'📍', label:'Остановка', title:x.name || 'Без названия', act:'tvStop', id:x.id}));
+    S.stops.filter(x => x.tripId===t.id && x.day).forEach(x => add(x.day, {type:'stop', time:x.time||'', icon:'📍', label:'Остановка', title:x.name || 'Без названия', act:'tvStop', id:x.id, k:'stop:'+x.id}));
     tripDocs(t).filter(x => x.date && docCatOf(x.cat)[0]!=='stay' && !(isFlightDoc(x) && (x.flights||[]).length)).forEach(x => { const c = docCatOf(x.cat);
-      add(x.date, {type:'doc', time:'', icon:c[1], label:c[2], title:x.title || 'Документ', act:'stayOpen', id:x.id}); });
+      add(x.date, {type:'doc', time:'', icon:c[1], label:c[2], title:x.title || 'Документ', act:'stayOpen', id:x.id, k:'doc:'+x.id}); });
   });
   return out;
 }
@@ -3163,9 +3169,12 @@ const TASK_KEY = {morning:'06:00', day:'12:00', evening:'18:00'};
 /* группа «Плана на сегодня» для события поездки: по времени, а без времени — по смыслу (время не выдумывается) */
 const EV_SLOT = {tstart:'morning', swap:'morning', stay:'morning', out:'morning', doc:'morning', dep:'day', arr:'day', stop:'day', in:'evening', tend:'evening'};
 const evSlot = e => e.time ? (e.time<'12:00' ? 'morning' : e.time<'18:00' ? 'day' : 'evening') : (EV_SLOT[e.type] || 'day');
-function evRow(e){
+/* отметка «сделано» у события поездки хранится в записи дня (S.days[дата].evDone) — сама поездка, бронь и рейс не меняются */
+const evIsDone = (k, e) => !!(e && e.k && !e.compact && ((S.days[k] || {}).evDone || {})[e.k]);
+function evRow(e, k){
   const btn = (txt) => `<button class="stay-h" data-a="${e.act}" data-id="${e.id}">${esc(txt)}</button>`;
-  return `<div class="stay tev ${e.type}${e.compact ? ' mini' : ''}"><span class="stay-i">${e.icon}</span><div class="stay-b">${e.title ? `<span class="stay-l">${e.label}:</span> ${btn(e.title)}` : btn(e.label)}${e.time ? `<span class="stay-t">${esc(e.time)}</span>` : ''}</div></div>`;
+  const can = k && e.k && !e.compact, on = can && evIsDone(k, e);
+  return `<div class="stay tev ${e.type}${e.compact ? ' mini' : ''}${on ? ' done' : ''}">${can ? `<button class="chk ${on ? 'on' : ''}" data-a="evToggle" data-d="${k}" data-k="${esc(e.k)}" title="${on ? 'Снять отметку' : 'Отметить выполненным'}" aria-label="${esc(e.label)}: ${on ? 'сделано' : 'отметить'}"></button>` : ''}<span class="stay-i">${e.icon}</span><div class="stay-b">${e.title ? `<span class="stay-l">${e.label}:</span> ${btn(e.title)}` : btn(e.label)}${e.time ? `<span class="stay-t">${esc(e.time)}</span>` : ''}</div></div>`;
 }
 function calHtml(){
   const t = T(), sel = calSelDate(), {days, month} = calRange(), byDate = {}, tev = travelEvents();
@@ -3207,7 +3216,7 @@ function calDayPanel(k, evs){
       <span class="cal-slot" title="${(SLOTS.find(v => v[0]===x.slot)||['',''])[1]}">${SLOT_ICO[x.slot]||'•'}</span>
       <span class="tt" data-a="taskEdit" data-id="${x.id}" title="Изменить">${esc(x.text)}</span>
       <button class="ic" title="Удалить" data-a="taskDel" data-id="${x.id}">×</button></div>`}))
-    .concat(evs.map((e,i) => ({key:e.time || EV_KEY[e.type] || '12:00', rank:EV_RANK[e.type] ?? 5, i, html:evRow(e)})))
+    .concat(evs.map((e,i) => ({key:e.time || EV_KEY[e.type] || '12:00', rank:EV_RANK[e.type] ?? 5, i, html:evRow(e, k)})))
     .sort((a,b) => a.key.localeCompare(b.key) || a.rank-b.rank || a.i-b.i);
   /* шапка дня (дата, сводка, статус, кнопки) — в calBar; здесь сразу задачи и события */
   return `<div class="cal-day">
